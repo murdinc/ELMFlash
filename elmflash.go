@@ -8,8 +8,7 @@ import (
 )
 
 //const baud = 9600
-const baud = 38400
-
+const baud = 115200
 
 func main() {
 
@@ -32,6 +31,8 @@ func main() {
         identity, err := elm.Identify()
         if err == nil {
             fmt.Printf("Identity: %v\n", identity)
+        } else {
+            fmt.Printf("Error: %v\n", err)
         }
 
         // List Voltage
@@ -42,6 +43,22 @@ func main() {
             fmt.Printf("Error: %v\n", err)
         }
 
+        // Protocol
+        data, err := elm.Protocol()
+        if err == nil {
+            fmt.Printf("Protocol: %v\n", data)
+        } else {
+            fmt.Printf("Error: %v\n", err)
+        }
+
+        // Test
+        testCommand := []byte{0x23, 0x10, 0x80, 0x80}
+        resp, err := elm.Write(testCommand)
+        if err == nil {
+            fmt.Printf("Response: %2.2X", resp)
+        } else {
+            fmt.Printf("Error: %v\n", err)
+        }
 
     }
 }
@@ -52,7 +69,7 @@ func findELM() string {
 
     // Look for what is mostly likely the Arduino device
     for _, f := range contents {
-        if strings.Contains(f.Name(), "PL2303") || strings.Contains(f.Name(), "tty") {
+        if strings.Contains(f.Name(), "STY3M") && strings.Contains(f.Name(), "tty") {
             return "/dev/" + f.Name()
         }
     }
