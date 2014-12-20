@@ -51,15 +51,13 @@ func main() {
             fmt.Printf("Error: %v\n", err)
         }
 
-        // Test
-        testCommand := []byte{0x23, 0x10, 0x80, 0x80}
-        resp, err := elm.Write(testCommand)
+        // Dump the bin
+        err = elm.DumpBIN()
         if err == nil {
-            fmt.Printf("Response: %2.2X", resp)
+            fmt.Print("DONE!\n")
         } else {
             fmt.Printf("Error: %v\n", err)
         }
-
     }
 }
 
