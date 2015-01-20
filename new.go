@@ -80,26 +80,32 @@ func main() {
 
 	obd := New()
 
-	obd.EnableSecurity()
-
 	cmdResp, err := obd.Cmd("ATDP")
 	if err != nil {
 		log("ATDP", err)
 	} else {
-		log("Protocol: - ["+cmdResp+"]", nil)
+		log("Protocol - ["+cmdResp+"]", nil)
 	}
 
-	obd.DownloadBlock()
+	msg := []byte{0x22, 0x02, 0x00}
+	msgResp, err := obd.Msg(msg)
+	if err != nil {
+		log("CMD 22 17", err)
+	} else {
+		fmt.Printf("Test Message response: %X\n", msgResp.Message)
+	}
 
-	/*
-		secMode := []byte{0xA0}
-		msgResp, err := obd.Msg(secMode)
-		if err != nil {
-			log("CMD A0", err)
-		} else {
-			fmt.Printf("Test Message response: %X\n", msgResp)
-		}
-	*/
+	msg = []byte{0x22, 0x17, 0x00}
+	msgResp, err = obd.Msg(msg)
+	if err != nil {
+		log("CMD 22 17", err)
+	} else {
+		fmt.Printf("Test Message response: %X\n", msgResp.Message)
+	}
+
+	obd.EnableSecurity()
+
+	obd.DownloadBlock()
 }
 
 // OBD Types
@@ -142,7 +148,8 @@ func (d *Device) DownloadBlock() error {
 	// [4] 00 = ?
 	// [5-6] 00,00 address?
 	// [7] 00=? // padding?
-	downloadCommand := []byte{0x35, 0x82, 0x04, 0x00, 0x10, 0xE8, 0x00}
+	//downloadCommand := []byte{0x35, 0x82, 0x04, 0x00, 0x10, 0xE8, 0x00}
+	downloadCommand := []byte{0x35, 0x82, 0x04, 0x00, 0x00, 0x00, 0x00}
 	resp, err := d.Msg(downloadCommand)
 	if err != nil {
 		log("DownloadBIN [FAIL] [", err)
