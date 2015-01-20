@@ -49,7 +49,7 @@ var errCodes = []string{
 	0x72: "72 - Transfer Aborted",
 	0x74: "74 - Illegal Address In Block Transfer",
 	0x75: "75 - Illegal Byte Count In Block Transfer",
-	0x76: "76 - Illegal Block Trasnfer Type",
+	0x76: "76 - Illegal Block Transfer Type",
 	0x77: "77 - Block Transfer Data Checksum Error",
 	0x78: "78 - Request Correcty Rcvd - Rsp Pending",
 	0x79: "79 - Incorrect Byte Count During Block Transfer",
@@ -86,8 +86,10 @@ func main() {
 	if err != nil {
 		log("ATDP", err)
 	} else {
-		log("Protocol: "+cmdResp, nil)
+		log("Protocol: - ["+cmdResp+"]", nil)
 	}
+
+	obd.DownloadBlock()
 
 	/*
 		secMode := []byte{0xA0}
@@ -109,22 +111,51 @@ type Packet struct {
 	Prepared bool
 	Error    error
 	ErrCode  byte
+	Multi    []Packet
+	Data     []byte
 }
 
 // Connection represents an OBD-II serial connection
 type Device struct {
-	Packet     Packet
-	serial     io.ReadWriteCloser
-	location   string
-	baud       int
-	lastHeader []byte
+	Packet       Packet
+	serial       io.ReadWriteCloser
+	location     string
+	baud         int
+	lastHeader   []byte
+	SecurityMode bool
 }
 
 // Device Functions
 ////////////////..........
 
+func (d *Device) DownloadBlock() error {
+	if d.SecurityMode == false {
+		err := d.EnableSecurity()
+		if err != nil {
+			log("Unable to enter secutiy mode!", err)
+		}
+	}
+
+	// [1] 35 = download
+	// [2] 82 =?
+	// [3]04 - length? (1,2,3,4 only) 256, 512, ? , 1024
+	// [4] 00 = ?
+	// [5-6] 00,00 address?
+	// [7] 00=? // padding?
+	downloadCommand := []byte{0x35, 0x82, 0x04, 0x00, 0x10, 0xE8, 0x00}
+	resp, err := d.Msg(downloadCommand)
+	if err != nil {
+		log("DownloadBIN [FAIL] [", err)
+	} else {
+		fmt.Printf("DOWNLOAD DATA: %X LEN: %v\n\n", resp.Data, resp.DataLen())
+	}
+
+	return nil
+}
+
 func (d *Device) EnableSecurity() error {
 
+	// Pick a random security key, because why not?
 	algo := Algos[rand.Intn(len(Algos))]
 
 	awake := false
@@ -148,8 +179,9 @@ func (d *Device) EnableSecurity() error {
 	_, err := d.Msg(a0)
 	if err != nil {
 		log("EnableSecurity - Set Algo [FAIL] [", err)
+	} else {
+		log("EnableSecurity - Set Algo [PASS]", nil)
 	}
-	log("EnableSecurity - Set Algo [PASS]", nil)
 
 	// Request Security Seed
 	getSeed := []byte{0x27, 0x01}
@@ -167,6 +199,7 @@ func (d *Device) EnableSecurity() error {
 		log("EnableSecurity - Submit Key] [FAIL", err)
 	} else {
 		log("EnableSecurity - Submit Key [PASS]", nil)
+		d.SecurityMode = true
 	}
 
 	return nil
@@ -197,16 +230,19 @@ func (d Device) Send(packet Packet) Packet {
 	}
 
 	// Wait for our reply
-	return d.Recieve()
+	return d.Receive()
 }
 
-func (d Device) Recieve() Packet {
+func (d Device) Receive() Packet {
 
 	// Read OBD-II response, loop until a response is generated
 	reader := bufio.NewReader(d.serial)
 	reply, err := reader.ReadBytes(EOL)
 	reply = []byte(strings.Trim(string(reply[:]), "\r\n>"))
 	dbg("Recieved]: ["+string(reply), nil)
+
+	reply = []byte(strings.TrimSuffix(string(reply[:]), "<DATA ERROR"))
+
 	if (err != nil) || (string(reply) == "?") {
 		errMsg := errors.New("Unknown command")
 		return Packet{Error: errMsg}
@@ -267,12 +303,15 @@ func (d *Device) Msg(msg []byte) (Packet, error) {
 		return resp, resp.Error
 	}
 
-	// Format response into Packet type
+	// Organize
 	hex := toHex(resp.Message)
 	resp.Header = hex[0:3]
-	resp.Message = hex[3:(len(hex) - 1)]
+	length := int(hex[0]>>4) + 1
+	resp.unPack(hex[length:])
+	resp.Message = hex[3:length]
 	resp.Checksum = hex[(len(hex) - 1)]
 
+	// Detect errors
 	errCode := hex[(len(hex) - 2)]
 	if resp.Message[0] == errResp && errCode != 0x00 {
 		resp.Error = errors.New("Recieved error from ECU: " + errCodes[errCode])
@@ -280,6 +319,35 @@ func (d *Device) Msg(msg []byte) (Packet, error) {
 	}
 
 	return resp, resp.Error
+}
+
+func (p *Packet) unPack(in []byte) {
+	var unpacked []Packet
+	var data []byte
+
+	for start := 0; start < len(in)-1; {
+		// Find a single packed packet
+		length := int(in[start]>>4) + 1
+		end := start + length
+		single := in[start:end]
+
+		// Chop chop
+		var packet Packet
+		packet.Header = single[0:3]
+		packet.Message = single[3:(len(single) - 1)]
+		packet.Checksum = single[(len(single) - 1)]
+
+		data = append(data, single[4:(len(single)-1)]...)
+		unpacked = append(unpacked, packet)
+		start = end
+	}
+
+	p.Data = data
+	p.Multi = unpacked
+}
+
+func (p *Packet) DataLen() int {
+	return len(p.Data)
 }
 
 func (p *Packet) prepare() {
@@ -313,7 +381,7 @@ func toHex(in []byte) []byte {
 
 	if err != nil {
 		fmt.Println(err)
-		os.Exit(1)
+		os.Exit(2)
 	}
 	return out
 }
@@ -355,7 +423,7 @@ func (d *Device) ConnectDevice() {
 	// AT AL - Allow Long Messages
 
 	// Run set of commands to properly setup our communication with the car
-	commands := []string{"AT D", "AT E0", "AT S0", "AT SP 3", "AT H1", "AT L0", "AT AL", "AT SI"}
+	commands := []string{"AT D", "AT E0", "AT S0", "AT SP 3", "AT H1", "AT L0", "AT AL", "AT SI", "AT CAF0"}
 	for _, c := range commands {
 		pkt := Packet{Message: []byte(c)}
 		resp := d.Send(pkt)
