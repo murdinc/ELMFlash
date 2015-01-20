@@ -8,8 +8,10 @@ import (
 	serial "github.com/huin/goserial"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"strings"
+	"time"
 )
 
 // App constants
@@ -54,29 +56,48 @@ var errCodes = []string{
 	0x80: "80 - Service Not Supported In Active Diagnostic Mode",
 	0xC1: "C1 - Start Comms +ve response",
 	0xC2: "C2 - Stop Comms +ve response",
-	0xC3: "C3- Access Timing Params +ve response",
+	0xC3: "C3 - Access Timing Params +ve response",
+	0xFF: "FF - No Data",
+}
+
+var Algos = []SecAlgo{
+	SecAlgo{ID: 0x4C, Seed: []byte{0xAB, 0xED, 0xCC}, Key: []byte{0x84, 0xC4}},
+	SecAlgo{ID: 0x67, Seed: []byte{0xD3, 0xFB, 0x8C}, Key: []byte{0xAB, 0xD9}},
+	// TODO
+}
+
+type SecAlgo struct {
+	ID   byte
+	Seed []byte
+	Key  []byte
 }
 
 // Main Function
 ////////////////..........
 func main() {
+
+	rand.Seed(time.Now().UTC().UnixNano())
+
 	obd := New()
+
+	obd.EnableSecurity()
 
 	cmdResp, err := obd.Cmd("ATDP")
 	if err != nil {
 		log("ATDP", err)
 	} else {
 		log("Protocol: "+cmdResp, nil)
-		//fmt.Printf("Test Command response: %v\n", cmdResp)
 	}
 
-	secMode := []byte{0xA0}
-	msgResp, err := obd.Msg(secMode)
-	if err != nil {
-		log("CMD A0", err)
-	} else {
-		fmt.Printf("Test Message response: %X\n", msgResp)
-	}
+	/*
+		secMode := []byte{0xA0}
+		msgResp, err := obd.Msg(secMode)
+		if err != nil {
+			log("CMD A0", err)
+		} else {
+			fmt.Printf("Test Message response: %X\n", msgResp)
+		}
+	*/
 }
 
 // OBD Types
@@ -87,6 +108,7 @@ type Packet struct {
 	Checksum byte
 	Prepared bool
 	Error    error
+	ErrCode  byte
 }
 
 // Connection represents an OBD-II serial connection
@@ -100,6 +122,56 @@ type Device struct {
 
 // Device Functions
 ////////////////..........
+
+func (d *Device) EnableSecurity() error {
+
+	algo := Algos[rand.Intn(len(Algos))]
+
+	awake := false
+	for !awake {
+		initialCommand := []byte{0xA0}
+		resp, _ := d.Msg(initialCommand)
+		if resp.Error != nil {
+			if resp.ErrCode != 0xFF && (resp.Message[0] != 0xE0) {
+				log("Turn Ignition off...", nil)
+			} else {
+				log("Turn Ignition on...", nil)
+			}
+		} else if resp.Error == nil && resp.Message[0] == 0xE0 {
+			log("FEPS [PASS]", nil)
+			break
+		}
+	}
+
+	// Setup Security Algorithm
+	a0 := []byte{0x31, 0xA0, 0x02, 0x00, algo.ID, 0x01}
+	_, err := d.Msg(a0)
+	if err != nil {
+		log("EnableSecurity - Set Algo [FAIL] [", err)
+	}
+	log("EnableSecurity - Set Algo [PASS]", nil)
+
+	// Request Security Seed
+	getSeed := []byte{0x27, 0x01}
+	_, err = d.Msg(getSeed)
+	if err != nil {
+		log("EnableSecurity - Request seed FAIL", err)
+	} else {
+		log("EnableSecurity - Request Seed [PASS]", nil)
+	}
+
+	// Submit Security Key
+	submitKey := append([]byte{0x27, 0x02}, algo.Key...)
+	_, err = d.Msg(submitKey)
+	if err != nil {
+		log("EnableSecurity - Submit Key] [FAIL", err)
+	} else {
+		log("EnableSecurity - Submit Key [PASS]", nil)
+	}
+
+	return nil
+}
+
 func (d Device) Send(packet Packet) Packet {
 
 	// Check for open connection
@@ -139,8 +211,16 @@ func (d Device) Recieve() Packet {
 		errMsg := errors.New("Unknown command")
 		return Packet{Error: errMsg}
 	}
-	response := Packet{Message: reply}
-	return response
+	resp := Packet{Message: reply}
+
+	strResp := string(resp.Message)
+	// Check for ERROR
+	if (strings.Contains(strResp, "?")) || (strings.Contains(strResp, "ERROR")) || (strings.Contains(strResp, "NO DATA")) {
+		resp.Error = errors.New("Response: [" + strResp + "]")
+		resp.Message = nil
+		resp.ErrCode = 0xFF
+	}
+	return resp
 }
 
 func New() *Device {
@@ -156,8 +236,8 @@ func (d Device) Cmd(cmd string) (string, error) {
 
 	strResp := string(resp.Message)
 
-	// Check for OK
-	if strings.Contains(string(strResp), "?") {
+	// Check for ERROR
+	if (strings.Contains(strResp, "?")) || (strings.Contains(strResp, "ERROR")) {
 		resp.Error = errors.New("Error sending command: [" + cmd + "] response: [" + strResp + "]")
 	}
 
@@ -172,23 +252,31 @@ func (d *Device) Msg(msg []byte) (Packet, error) {
 	// Handle header
 	message.prepare()
 	if len(d.lastHeader) > 0 && message.Header[0] == d.lastHeader[0] {
-		dbg("Prepare]: [Header already correctly set ", nil)
+		dbg("Prepare]: [Header already correctly set", nil)
 	} else {
 		headerMsg := Packet{Message: append([]byte("AT SH"), message.Header...)}
 		d.Send(headerMsg)
 		d.lastHeader = message.Header
 	}
 
-	// Format response into Packet type
+	// Send the message
 	resp := d.Send(message)
+
+	// Check if we have a ELM error already
+	if resp.Error != nil {
+		return resp, resp.Error
+	}
+
+	// Format response into Packet type
 	hex := toHex(resp.Message)
 	resp.Header = hex[0:3]
 	resp.Message = hex[3:(len(hex) - 1)]
 	resp.Checksum = hex[(len(hex) - 1)]
 
-	if resp.Message[0] == errResp {
-		errCode := hex[(len(hex) - 2)]
+	errCode := hex[(len(hex) - 2)]
+	if resp.Message[0] == errResp && errCode != 0x00 {
 		resp.Error = errors.New("Recieved error from ECU: " + errCodes[errCode])
+		resp.ErrCode = errCode
 	}
 
 	return resp, resp.Error
@@ -273,6 +361,8 @@ func (d *Device) ConnectDevice() {
 		resp := d.Send(pkt)
 		if resp.Error != nil {
 			log("Setup Command Failure: "+c, nil)
+			log("Try turning the ignition to position 0 and then position 1 again.", nil)
+			os.Exit(1)
 		}
 	}
 }
@@ -310,7 +400,7 @@ func dbg(kind string, err error) {
 
 func log(kind string, err error) {
 	if err == nil {
-		fmt.Printf("[LOG - %s]\n", kind)
+		fmt.Printf("====> %s\n", kind)
 	} else {
 		fmt.Printf("[ERROR - %s]: %s\n", kind, err)
 	}
