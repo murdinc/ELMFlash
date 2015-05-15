@@ -26,40 +26,58 @@ func main() {
 
 			},
 		},
+		{
+			Name:      "common",
+			ShortName: "c",
+			Action: func(c *cli.Context) {
+				obd := iso9141.New()
+				obd.CommonIdDump("COMMON_ID")
+
+			},
+		},
+		{
+			Name:      "ecuId",
+			ShortName: "i",
+			Action: func(c *cli.Context) {
+				obd := iso9141.New()
+				obd.EcuId()
+
+			},
+		},
 	}
 
 	app.Run(os.Args)
 }
 
 /*
-	obd := iso9141.New()
+obd := iso9141.New()
 
-	cmdResp, err := obd.Cmd("ATDP")
-	if err != nil {
-		log("ATDP", err)
-	} else {
-		log("Protocol - ["+cmdResp+"]", nil)
-	}
+cmdResp, err := obd.Cmd("ATDP")
+if err != nil {
+	log("ATDP", err)
+} else {
+	log("Protocol - ["+cmdResp+"]", nil)
+}
 
-	msg := []byte{0x22, 0x02, 0x00}
-	msgResp, err := obd.Msg(msg)
-	if err != nil {
-		log("CMD 22 17", err)
-	} else {
-		fmt.Printf("Test Message response: %X\n", msgResp.Message)
-	}
+msg := []byte{0x22, 0x02, 0x00}
+msgResp, err := obd.Msg(msg)
+if err != nil {
+	log("CMD 22 17", err)
+} else {
+	fmt.Printf("Test Message response: %X\n", msgResp.Message)
+}
 
-	msg = []byte{0x22, 0x17, 0x00}
-	msgResp, err = obd.Msg(msg)
-	if err != nil {
-		log("CMD 22 17", err)
-	} else {
-		fmt.Printf("Test Message response: %X\n", msgResp.Message)
-	}
+msg = []byte{0x22, 0x17, 0x00}
+msgResp, err = obd.Msg(msg)
+if err != nil {
+	log("CMD 22 17", err)
+} else {
+	fmt.Printf("Test Message response: %X\n", msgResp.Message)
+}
 
-	obd.EnableSecurity()
+obd.EnableSecurity()
 
-	obd.DownloadBlock()
+obd.DownloadBlock()
 
 */
 

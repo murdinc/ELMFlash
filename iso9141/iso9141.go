@@ -99,16 +99,29 @@ type Device struct {
 // Device Functions
 ////////////////..........
 
+func (d *Device) EcuId() error {
+	ecuIdCommand := []byte{0x10} // note: flipped most and least significant bytes
+	idResp, err := d.Msg(ecuIdCommand)
+	if err != nil {
+		log("EcuId", err)
+		return err
+	} else {
+		resp := fmt.Sprintf("ECU ID: %X", idResp.Message)
+		log(resp, nil)
+	}
+	return nil
+}
+
 func (d *Device) DownloadBIN(outfile string) error {
 
 	// Open a file for writing
 	ts := time.Now().Format(time.RFC3339)
-	f, err := os.Create("./" + outfile + timestamp + ".BIN")
-	f, err := os.Create(fmt.Sprintf("./%s-%s.%s.%s.%s.%s.%s", outfile, ts.Day(), ts.Month(), ts.Year(), ts.Hour(), ts.Minute(), ts.Second()))
+	f, err := os.Create("./" + outfile + ts + ".BIN")
+	//f, err := os.Create(fmt.Sprintf("./%s-%s.%s.%s.%s.%s.%s", outfile, ts.Day(), ts.Month(), ts.Year(), ts.Hour(), ts.Minute(), ts.Second()))
 
 	defer f.Close()
 
-	fmt.Println("./" + outfile + timestamp + ".BIN")
+	fmt.Println("./" + outfile + ts + ".BIN")
 	if err != nil {
 		log("DownloadBIN - Error opening file", err)
 		return err
@@ -135,6 +148,39 @@ func (d *Device) DownloadBIN(outfile string) error {
 	return nil
 }
 
+func (d *Device) CommonIdDump(outfile string) error {
+
+	// Open a file for writing
+	ts := time.Now().Format(time.RFC3339)
+	f, _ := os.Create("./" + outfile + ts + ".BIN")
+	//f, err := os.Create(fmt.Sprintf("./%s-%s.%s.%s.%s.%s.%s", outfile, ts.Day(), ts.Month(), ts.Year(), ts.Hour(), ts.Minute(), ts.Second()))
+
+	defer f.Close()
+
+	for i := 0x100000; i < 0x01000000; i++ {
+		i1 := byte(i >> 16)
+		i2 := byte(i >> 8)
+		i3 := byte(i)
+		commonIdCommand := []byte{0x22, i3, i2, i1} // note: flipped most and least significant bytes
+		msgResp, err := d.Msg(commonIdCommand)
+		if err != nil {
+			log(fmt.Sprintf("CMD %X", commonIdCommand), err)
+		} else {
+			resp := fmt.Sprintf("Common ID: %X Response: %X", commonIdCommand[1:], msgResp.Message[3:len(msgResp.Message)-1])
+			n, err := f.WriteString(resp + "\n")
+			if err != nil {
+				log("CommonIdDump - Error writing to file", err)
+				return err
+			}
+			log(fmt.Sprintf("CommonIdDump - %s - wrote %d bytes", resp, n), nil)
+		}
+
+		f.Sync()
+	}
+	return nil
+
+}
+
 func (d *Device) DownloadBlock(start, length int) ([]byte, error) {
 	if d.SecurityMode == false {
 		err := d.EnableSecurity()
@@ -157,12 +203,11 @@ func (d *Device) DownloadBlock(start, length int) ([]byte, error) {
 	// [5-6-7]	= 00 00 00 address
 
 	// Request Download Transfer
-	//log("Requesting Bytes: "+fmt.Sprintf("0x%.6X", start)+" - "+fmt.Sprintf("0x%.6X", start+length), nil)
 	log(fmt.Sprintf("Requesting Bytes: 0x%.6X - 0x%.6X", start, start+length-1), nil)
 	downloadCommand := []byte{0x35, 0x82, l1, l2, s1, s2, s3}
 	resp, err := d.Msg(downloadCommand)
 	if err != nil {
-		log("DownloadBIN [FAIL] [", err)
+		log("DownloadBlock [FAIL] [", err)
 		return []byte{}, err
 	}
 
@@ -170,7 +215,7 @@ func (d *Device) DownloadBlock(start, length int) ([]byte, error) {
 	exitCommand := []byte{0x37, 0x82}
 	_, err = d.Msg(exitCommand)
 	if err != nil {
-		log("DownloadBIN [FAIL] [", err)
+		log("DownloadBlock [FAIL] [", err)
 		return []byte{}, err
 	}
 
@@ -268,7 +313,7 @@ func (d Device) Receive() Packet {
 	reader := bufio.NewReader(d.serial)
 	reply, err := reader.ReadBytes(EOL)
 	reply = []byte(strings.Trim(string(reply[:]), "\r\n>"))
-	dbg("Recieved]: ["+string(reply), nil)
+	dbg("Received]: ["+string(reply), nil)
 
 	reply = []byte(strings.TrimSuffix(string(reply[:]), "<DATA ERROR"))
 
