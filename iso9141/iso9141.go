@@ -17,7 +17,7 @@ import (
 // App constants
 ////////////////..........
 const baud = 115200
-const debug = false
+const debug = true
 const headless = false
 const obdDevice = "STY3M"
 const EOL = 0x3E
@@ -112,6 +112,72 @@ func (d *Device) EcuId() error {
 	return nil
 }
 
+// TEST
+func (d *Device) Test() error {
+
+	// Pull in the Calibration file
+	f, err := os.Open("MSP.BIN")
+	if err != nil {
+		log("UploadBIN - Error opening file", err)
+		return err
+	}
+
+	// Make a 1024 byte buffer
+	block := make([]byte, 1024)
+
+	// Write
+	count := 0
+	for i := 0x00FC00; count < 480; i = i - 0x0400 {
+		writeOffset := 0x100000
+		if count != 0 && count%32 == 0 {
+			i = i + 0x10000
+		}
+		if count >= 96 {
+			writeOffset = writeOffset + 0x80000
+		}
+		if count == 2 {
+			return nil
+		}
+		count++
+
+		// Seek to new offset
+		readAddr64 := int64(i)
+		readOffset, err := f.Seek(readAddr64, 0)
+
+		// Read 1024 bytes
+		n, err := f.Read(block)
+		if err != nil {
+			log("UploadBIN - Error reading calibration", err)
+			return err
+		}
+		log(fmt.Sprintf("UploadBIN - reading %d bytes from offset: 0x%X", n, readOffset), nil)
+
+		// Get the destination addresses
+		writeAddr := writeOffset + int(readOffset)
+		log(fmt.Sprintf("UploadBIN - writing %d bytes to offset 0x%X", n, writeAddr), nil)
+
+		// Append the Checksum
+		crc := uint16(0x0000)
+		for i := 0; i < len(block); i++ {
+			crc = crc + uint16(block[i])
+		}
+
+		chkh := byte(crc >> 8)
+		chkl := byte(crc)
+
+		log(fmt.Sprintf("UploadBIN - appending checksum: 0x%X 0x%X", chkh, chkl), nil)
+		block = append(block, chkh, chkl)
+
+		// Upload the Calibration
+		fmt.Printf("%X\n\n", block)
+
+		fmt.Printf("CRC: %X\n\n", crc)
+
+	}
+
+	return nil
+}
+
 func (d *Device) DownloadBIN(outfile string) error {
 
 	// Open a file for writing
@@ -145,6 +211,102 @@ func (d *Device) DownloadBIN(outfile string) error {
 
 		f.Sync()
 	}
+	return nil
+}
+
+func (d *Device) UploadBIN() error {
+	// Make sure we have Security Access
+	if d.SecurityMode == false {
+		err := d.EnableSecurity()
+		if err != nil {
+			log("RunRoutine - Unable to enter secutiy mode!", err)
+			return err
+		}
+	}
+
+	// Request by PID
+	_, err := d.Msg([]byte{0x22, 0x11, 0x00})
+	if err != nil {
+		return err
+	}
+
+	// Read some bytes
+	_, err = d.Msg([]byte{0x23, 0x10, 0x80, 0x80})
+	if err != nil {
+		return err
+	}
+
+	// Delete BIN on ECU
+	err = d.RunRoutine([]byte{0x31, 0xA1}, []byte{0x32, 0xA1, 0x00}, []byte{0x22, 0x23})
+	if err != nil {
+		log("UploadBIN - Routine 31 A1", err)
+	}
+
+	// Pull in the Calibration file
+	f, err := os.Open("MSP.BIN")
+	if err != nil {
+		log("UploadBIN - Error opening file", err)
+		return err
+	}
+
+	// Make a 1024 byte buffer
+	block := make([]byte, 1024)
+
+	// Write
+	count := 0
+	for i := 0x00FC00; count < 480; i = i - 0x0400 {
+		writeOffset := 0x100000
+		if count != 0 && count%32 == 0 {
+			i = i + 0x10000
+		}
+		if count >= 96 {
+			writeOffset = writeOffset + 0x80000
+		}
+		count++
+
+		// Seek to new offset
+		readAddr64 := int64(i)
+		readOffset, err := f.Seek(readAddr64, 0)
+
+		// Read 1024 bytes
+		n, err := f.Read(block)
+		if err != nil {
+			log("UploadBIN - Error reading calibration", err)
+			return err
+		}
+		log(fmt.Sprintf("UploadBIN - reading %d bytes from offset: 0x%X", n, readOffset), nil)
+
+		// Get the destination addresses
+		writeAddr := writeOffset + int(readOffset)
+		log(fmt.Sprintf("UploadBIN - writing %d bytes to offset 0x%X", n, writeAddr), nil)
+
+		// Append the Checksum
+		crc := uint16(0x0000)
+		for i := 0; i < len(block); i++ {
+			crc = crc + uint16(block[i])
+		}
+
+		chkh := byte(crc >> 8)
+		chkl := byte(crc)
+
+		log(fmt.Sprintf("UploadBIN - appending checksum: 0x%X 0x%X", chkh, chkl), nil)
+		block = append(block, chkh, chkl)
+
+		// Upload the Calibration
+		fmt.Printf("%X\n\n", block)
+
+		err = d.UploadBlock(writeAddr, 1024, block)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Run Routine A3
+	err = d.RunRoutine([]byte{0x31, 0xA3, 0x1F, 0x3F}, []byte{0x32, 0xA3, 0x00}, []byte{0x22, 0x23})
+	if err != nil {
+		log("UploadBIN - Routine A3 [FAIL] [", err)
+	}
+
 	return nil
 }
 
@@ -224,6 +386,113 @@ func (d *Device) DownloadBlock(start, length int) ([]byte, error) {
 
 	resp.DataAddr = start
 	return resp.Data, nil
+}
+
+func (d *Device) UploadBlock(start, length int, block []byte) error {
+	if d.SecurityMode == false {
+		err := d.EnableSecurity()
+		if err != nil {
+			log("UploadBlock - Unable to enter secutiy mode!", err)
+			return err
+		}
+	}
+
+	l1 := byte(length >> 8)
+	l2 := byte(length)
+
+	s1 := byte(start >> 16)
+	s2 := byte(start >> 8)
+	s3 := byte(start)
+
+	// [1] 34   = upload by address command
+	// [2] 82   = ?
+	// [3-4]    = length (01 00,02 00,04 00 - only) 256, 512, 1024
+	// [5-6-7]  = 00 00 00 address
+
+	// Request Upload Transfer
+	log(fmt.Sprintf("Requesting to upload Bytes: 0x%.6X - 0x%.6X", start, start+length-1), nil)
+	uploadCommand := []byte{0x34, 0x82, l1, l2, s1, s2, s3}
+	_, err := d.Msg(uploadCommand)
+	if err != nil {
+		log("UploadBlock - Request Upload - 34 82 [FAIL] [", err)
+		//return err
+	}
+
+	// Send the block
+	for i := 0; i < length; i++ {
+		if i%6 == 0 {
+			end := i + 6
+			if end >= length {
+				end = len(block)
+			}
+
+			uploadBlock := append([]byte{0x36}, block[i:end]...)
+			_, err = d.Msg(uploadBlock)
+		}
+	}
+
+	// Request Download/Upload Transfer Exit
+	exitCommand := []byte{0x37, 0x82}
+	_, err = d.Msg(exitCommand)
+	if err != nil {
+		log("UploadBlock - Request Transfer Exit - 37 82 [FAIL] [", err)
+	}
+
+	// Run Routine A2
+	err = d.RunRoutine([]byte{0x31, 0xA2}, []byte{0x32, 0xA2, 0x00}, []byte{0x22, 0x23})
+	if err != nil {
+		log("UploadBlock - Routine A2 [FAIL] [", err)
+	}
+
+	return nil
+}
+
+func (d *Device) RunRoutine(start, stop, success []byte) error {
+	// Make sure we have Security Access
+	if d.SecurityMode == false {
+		err := d.EnableSecurity()
+		if err != nil {
+			log("RunRoutine - Unable to enter secutiy mode!", err)
+			return err
+		}
+	}
+
+	done := false
+
+	// Start Routine
+	for !done {
+		resp, err := d.Msg(start)
+
+		if resp.Error != nil {
+			if contains(resp.ErrCode, success) {
+				log("Start Routine [PASS]!", nil)
+				break
+			} else {
+				log("Start Routine [FAIL] [", err)
+			}
+		}
+	}
+
+	// Stop Routine
+	for !done {
+		resp, _ := d.Msg(stop)
+
+		errCode := resp.Message[(len(resp.Message) - 2)]
+
+		logmsg := fmt.Sprintf("Message0: %X, errCode %X", resp.Message[0], errCode)
+		log(logmsg, nil)
+
+		if resp.Message[0] == errResp && errCode == 0x00 {
+			msg := fmt.Sprintf("Stop Routine [PASS] - Response: %X", resp.Message)
+			log(msg, nil)
+			break
+		} else {
+			msg := fmt.Sprintf("Stop Routine [FAIL] - Response: %X", resp.Message)
+			log(msg, nil)
+		}
+	}
+
+	return nil
 }
 
 func (d *Device) EnableSecurity() error {
@@ -498,7 +767,7 @@ func (d *Device) ConnectDevice() {
 	// AT AL - Allow Long Messages
 
 	// Run set of commands to properly setup our communication with the car
-	commands := []string{"AT D", "AT E0", "AT S0", "AT SP 3", "AT H1", "AT L0", "AT AL", "AT SI", "AT CAF0"}
+	commands := []string{"AT D", "AT E0", "AT S0", "AT SP 3", "AT H1", "AT L0", "AT AL", "AT SI", "AT CAF0", "AT AT0"}
 	for _, c := range commands {
 		pkt := Packet{Message: []byte(c)}
 		resp := d.Send(pkt)
@@ -527,6 +796,15 @@ func (d *Device) FindDevice() bool {
 
 func (d *Device) DisconnectDevice() {
 
+}
+
+func contains(n byte, h []byte) bool {
+	for _, c := range h {
+		if c == n {
+			return true
+		}
+	}
+	return false
 }
 
 // Debug Function
