@@ -207,8 +207,8 @@ func (d *Device) UploadBIN() error {
 	count := 0
 	log("Starting Upload...", nil)
 	bar := pb.StartNew(480)
-	for i := 0x00FC00; count < 480; i = i - 0x0400 {
-		writeOffset := 0x100000
+	for i := 0x000000; count < 480; i = i - 0x0400 {
+		writeOffset := 0x10FC00
 		if count != 0 && count%32 == 0 {
 			i = i + 0x10000
 		}

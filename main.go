@@ -1,6 +1,7 @@
 package main
 
 import (
+	"./hexstuff"
 	"./iso9141"
 	"fmt"
 	"github.com/murdinc/cli"
@@ -38,8 +39,16 @@ func main() {
 			Name:      "test",
 			ShortName: "t",
 			Action: func(c *cli.Context) {
-				obd := iso9141.New()
-				obd.Test()
+				hs := hexstuff.New()
+				hs.Test()
+			},
+		},
+		{
+			Name:      "tests",
+			ShortName: "s",
+			Action: func(c *cli.Context) {
+				hs := hexstuff.New()
+				hs.TestS()
 			},
 		},
 		{
