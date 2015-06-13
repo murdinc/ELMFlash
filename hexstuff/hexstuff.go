@@ -53,11 +53,19 @@ func (h *HexStuff) TestS() error {
 	}
 	dbg(fmt.Sprintf("BIN - reading %d bytes.", n), nil)
 
-	regex := string(0x00) + string(0x02) //"[" + string(0x00) + "-" + string(0x01) + "]" + "[" + string(0x01) + "-" + string(0x10) + "]"
+	regex := string(0x00) + string(0x04) + "|" +
+		string(0x00) + string(0x00) + string(0x00) + string(0x00) + string(0x06) + "|" +
+		//string(0x00) + string(0x00) + string(0x00) + string(0x02) + "|" +
+		string(0x00) + string(0x01) + string(0x00) + string(0x02) + "|" +
+		string(0x00) + string(0x02) + string(0x00) + string(0x05) + "|" +
+		string(0x00) + string(0x02) + string(0x00) + string(0x02) + "|" +
+		string(0x00) + string(0x02) + "[^" + string(0x00) + "]"
+
 	re := regexp.MustCompile(regex)
 	matches := re.FindAllIndex(block, -1)
 
 	listCount := 0
+	listTableCount := 0
 	tableCount := 0
 	missedCount := 0
 
@@ -65,6 +73,12 @@ func (h *HexStuff) TestS() error {
 
 Loop:
 	for _, i := range matches {
+
+		// Break if we are past the point we are testing for
+		//if i[0] >= 0x1875 {
+		if i[0] > 0x10000 {
+			break Loop
+		}
 
 		// Break if we are over the 0x10000 limit
 		if i[0] > 0x10000 {
@@ -90,21 +104,22 @@ Loop:
 		// Parts we care about right now
 		thirdByte := block[index+2]
 		fourthByte := block[index+3]
+		sixthByte := block[index+5]
 
 		//log(fmt.Sprintf("THIRD: %X FOURTH %X ", thirdByte, fourthByte), nil)
 
 		// Third Byte is not 0x00, so must be a list?
-		if !(thirdByte == 0x00 && fourthByte == 0x2) &&
-			!(thirdByte == 0x00 && fourthByte == 0x5) {
+		if !(thirdByte == 0x00 && fourthByte == 0x02) &&
+			!(thirdByte == 0x00 && fourthByte == 0x05) &&
+			!(thirdByte == 0x00 && fourthByte == 0x00 && sixthByte == 0x06) {
 
 			for b := index + 2; b < len(block); b++ {
 				if (block[b] == 0x00 && block[b+1] == 0x02) ||
+					(block[b] == 0x00 && block[b+1] == 0x04) ||
 					//(block[b] == 0x00 && block[b+1] == 0x00) ||
-					//(block[b] == 0x01 && block[b+1] == 0x02) ||
 					//(block[b] == 0x40 && block[b+1] == 0x00) ||
 					b >= 0x8000 { // && b%2 == 0 {
 
-					listCount++
 					size := len(block[index:b])
 					match := fmt.Sprintf("LIST MATCH: %v   ADDRESS: 0x%X  END: 0x%X SIZE: [%d]", block[index:b], index, b, size)
 					log(match, nil)
@@ -121,6 +136,7 @@ Loop:
 						fmt.Println("================================================================================================================")
 						fmt.Println("================================================================================================================")
 						fmt.Println("\n")
+						listCount++
 						continue Loop
 					}
 
@@ -128,15 +144,35 @@ Loop:
 
 					length := int(block[index+2] + 1)
 					if block[index+3] == 0x09 || block[index+3] == 0x08 || block[index+3] == 0x01 {
-						singleStart := index + 4
+						firstStart := index + 4
+						firstEnd := firstStart + length
 						fmt.Println("\n")
-						log(fmt.Sprintf("NOT TABLE: [%v]", block[singleStart:singleStart+length]), nil)
-						if length+4 < size {
-							log(fmt.Sprintf("EXTRA: [%v]", block[singleStart+length:b]), nil)
+						log(fmt.Sprintf("FIRST ITEM:	[%v]", block[firstStart:firstEnd]), nil)
+
+						if firstEnd > b {
+							previous = b
+							listCount++
+							continue Loop
 						}
+
+						extra := block[firstEnd:b]
+						if length+4 < size && len(extra) > 1 {
+							offset := firstEnd + 4
+							for offset < b {
+								extraLength := int(extra[3] + 1)
+								end := offset + extraLength
+								log(fmt.Sprintf("EXTRA: [%v]	DATA: [%v]", block[offset-2:offset], block[offset:end]), nil)
+								offset = offset + extraLength + 5
+							}
+						} else {
+							log(fmt.Sprintf("EXTRA: [%v]", extra), nil)
+						}
+						listCount++
+
 					} else {
 						height := block[index+3] + 1
 						heightCount := 0
+
 						for p := 6; p < size; p = p + length {
 							heightCount++
 							end := index + p + length
@@ -145,7 +181,7 @@ Loop:
 							}
 							log(fmt.Sprintf("TABLE: [%v]		WIDTH: [%d]		HEIGHT: [%d]		COUNT: [%d]", block[index+p:end], length, height, heightCount), nil)
 						}
-
+						listTableCount++
 					}
 
 					previous = b
@@ -161,6 +197,7 @@ Loop:
 
 		// Third byte is 00 so must be a table?
 		if (thirdByte == 0x00 && fourthByte == 0x02) ||
+			(thirdByte == 0x00 && fourthByte == 0x00) ||
 			(thirdByte == 0x00 && fourthByte == 0x05) {
 
 			m1 := block[index+1]
@@ -183,14 +220,17 @@ Loop:
 
 			fmt.Println("\n")
 
-			//printTable16(width, height, block[start:end])
-			printTable(width, height, block[start:end])
+			if m1 == 4 || m1 == 1 {
+				printTable16(width, height, block[start:end])
+			} else {
+				printTable(width, height, block[start:end])
+			}
 
 		}
 
 	}
 
-	log(fmt.Sprintf("LIST COUNT: %d TABLE COUNT: %d MISSED COUNT: %d", listCount, tableCount, missedCount), nil)
+	log(fmt.Sprintf("LIST COUNT: %d TABLE COUNT: %d LIST TABLE COUNT: %d MISSED COUNT: %d", listCount, tableCount, listTableCount, missedCount), nil)
 
 	return nil
 
