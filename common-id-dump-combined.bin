@@ -1,0 +1,103 @@
+WITH SECURITY
+
+Common ID: 0200 Response: 00            << Response is: 01           without security
+Common ID: 1100 Response: 10800004      << Response is: 10800000     without security
+
+
+WITHOUT SECURITY
+
+Common ID: 0200 Response: 01            << Response is: 00           with security
+Common ID: 0202 Response: 07
+Common ID: 1100 Response: 10800000      << Response is: 10800004     with security
+Common ID: 1501 Response: FF
+Common ID: 1502 Response: FF
+Common ID: 1503 Response: FF
+Common ID: 1504 Response: FF
+Common ID: 1505 Response: FF
+Common ID: 1506 Response: FF
+Common ID: 1507 Response: FF
+Common ID: 1510 Response: 03
+Common ID: 1520 Response: 05
+Common ID: 1540 Response: 00
+Common ID: 1541 Response: 00
+Common ID: 1544 Response: 30
+Common ID: 1545 Response: 00
+Common ID: 1590 Response: 00
+Common ID: 1591 Response: 00
+Common ID: 1592 Response: 00
+Common ID: 1593 Response: 00
+Common ID: 1594 Response: 00
+Common ID: 1595 Response: 00
+Common ID: 1596 Response: 00
+Common ID: 1597 Response: 00
+Common ID: 1700 Response: 10FF9A        << Address. Contents: 46 53 41 58 50 41 32 57 5A 30 33 20 (FSAXPA2WZ03 )
+Common ID: 1701 Response: 00
+Common ID: 1702 Response: 20
+Common ID: 1703 Response: 00
+Common ID: 1704 Response: 00
+Common ID: 1705 Response: 00
+Common ID: 1706 Response: 00
+Common ID: 1707 Response: 00
+Common ID: 1711 Response: 01
+Common ID: 1712 Response: 08
+Common ID: 1713 Response: 08
+Common ID: 1717 Response: 00
+Common ID: 1718 Response: 00
+Common ID: 1719 Response: 00
+Common ID: 1720 Response: 32
+Common ID: 1729 Response: 30
+Common ID: 172F Response: D8
+Common ID: 1734 Response: 03FE          << Marks the end of something? Next part is address 0x400
+Common ID: 1738 Response: 0000
+Common ID: 173C Response: 06D0
+Common ID: 1744 Response: 4F
+Common ID: 1746 Response: 00
+Common ID: 174A Response: 00
+Common ID: 174C Response: 0000
+Common ID: 1750 Response: 0478
+Common ID: 1754 Response: 0800
+Common ID: 1758 Response: 80
+Common ID: 1764 Response: 0000
+Common ID: 176A Response: 0000
+Common ID: 1774 Response: 00
+Common ID: 1775 Response: 00
+Common ID: 1780 Response: 0000
+Common ID: 1785 Response: 8A
+Common ID: 1787 Response: 0372
+Common ID: 178A Response: C4
+Common ID: 178F Response: FF
+Common ID: 1790 Response: 0208
+Common ID: 1792 Response: 03FE
+Common ID: 1793 Response: 00
+Common ID: 1795 Response: 00
+Common ID: 1796 Response: 5A
+Common ID: 17A2 Response: 8A
+Common ID: 17A4 Response: 00
+Common ID: 17A5 Response: 00
+Common ID: 17B0 Response: 00
+Common ID: 17B1 Response: 00
+Common ID: 17B2 Response: 00
+Common ID: 17B3 Response: 35
+Common ID: 17B5 Response: 00
+Common ID: 17B6 Response: 00
+Common ID: 17B8 Response: 00
+Common ID: 17BA Response: 00
+Common ID: 17BB Response: 00
+Common ID: 17BC Response: 00
+Common ID: 17BD Response: 00
+Common ID: 17E2 Response: 0000
+Common ID: 17E3 Response: 0000
+Common ID: 17E4 Response: 0800
+Common ID: 17E6 Response: 0080
+Common ID: 17E8 Response: 00
+Common ID: 17E9 Response: 00
+Common ID: 17EA Response: 00
+Common ID: 17EC Response: 0000
+Common ID: 17ED Response: 00
+Common ID: 17EE Response: 00
+Common ID: 17EF Response: 00
+Common ID: 17F0 Response: 0000
+Common ID: 17F1 Response: 0000
+Common ID: 17FB Response: 0000
+Common ID: 17FC Response: 0000
+Common ID: 17FE Response: 30

@@ -142,7 +142,8 @@ func (d *Device) DownloadBIN(outfile string) error {
 
 	log("Starting Download...", nil)
 	bar := pb.StartNew(480)
-	for i := 0x10FC00; i < 0x180000; i = i + 0x0400 {
+	//for i := 0x10FC00; i < 0x180000; i = i + 0x0400 {
+	for i := 0xFF0000; i < 0xFFFFFF; i = i + 0x0400 {
 		bar.Increment()
 		addr := i
 
@@ -194,7 +195,7 @@ func (d *Device) UploadBIN() error {
 	}
 
 	// Pull in the Calibration file
-	f, err := os.Open("MSP.BIN")
+	f, err := os.Open("./calibrations/MSP.BIN")
 	if err != nil {
 		log("UploadBIN - Error opening file", err)
 		return err
@@ -240,11 +241,6 @@ func (d *Device) UploadBIN() error {
 			crc = crc + uint16(block[i])
 		}
 
-		// Skip blank blocks
-		if crc == 0xFFFC {
-			continue
-		}
-
 		chkh := byte(crc >> 8)
 		chkl := byte(crc)
 
@@ -270,6 +266,48 @@ func (d *Device) UploadBIN() error {
 }
 
 func (d *Device) CommonIdDump(outfile string) error {
+	// Open a file for writing
+	ts := time.Now().Format(time.RFC3339)
+	f, _ := os.Create("./" + outfile + ts + ".BIN")
+	//f, err := os.Create(fmt.Sprintf("./%s-%s.%s.%s.%s.%s.%s", outfile, ts.Day(), ts.Month(), ts.Year(), ts.Hour(), ts.Minute(), ts.Second()))
+
+	defer f.Close()
+
+	for i := 0x0000; i < 0x0FFFF; i++ {
+		//i1 := byte(i >> 16)
+		i2 := byte(i >> 8)
+		i3 := byte(i)
+		//commonIdCommand := []byte{0x22, i3, i2, i1} // note: flipped most and least significant bytes
+		commonIdCommand := []byte{0x22, i2, i3}
+		log(fmt.Sprintf("Trying Command: %X \n", commonIdCommand), nil)
+		msgResp, err := d.Msg(commonIdCommand)
+		if err != nil {
+			dbg(fmt.Sprintf("CMD %X", commonIdCommand), err)
+		} else {
+			resp := fmt.Sprintf("Common ID: %X Response: %X", commonIdCommand[1:], msgResp.Message[3:len(msgResp.Message)-1])
+			fmt.Print(resp + "\n")
+			n, err := f.WriteString(resp + "\n")
+			if err != nil {
+				log("CommonIdDump - Error writing to file", err)
+				return err
+			}
+			dbg(fmt.Sprintf("CommonIdDump - %s - wrote %d bytes", resp, n), nil)
+		}
+
+		f.Sync()
+	}
+	return nil
+
+}
+
+func (d *Device) LocalIdDump(outfile string) error {
+	if d.SecurityMode == false {
+		err := d.EnableSecurity()
+		if err != nil {
+			log("DownloadBlock - Unable to enter secutiy mode!", err)
+			return err
+		}
+	}
 
 	// Open a file for writing
 	ts := time.Now().Format(time.RFC3339)
@@ -278,22 +316,22 @@ func (d *Device) CommonIdDump(outfile string) error {
 
 	defer f.Close()
 
-	for i := 0x100000; i < 0x01000000; i++ {
-		i1 := byte(i >> 16)
-		i2 := byte(i >> 8)
-		i3 := byte(i)
-		commonIdCommand := []byte{0x22, i3, i2, i1} // note: flipped most and least significant bytes
-		msgResp, err := d.Msg(commonIdCommand)
+	for i := 0x00; i < 0x0FF; i++ {
+		i1 := byte(i)
+		localIdCommand := []byte{0x21, i1}
+		log(fmt.Sprintf("Trying Command: %X \n", localIdCommand), nil)
+		msgResp, err := d.Msg(localIdCommand)
 		if err != nil {
-			dbg(fmt.Sprintf("CMD %X", commonIdCommand), err)
+			dbg(fmt.Sprintf("CMD %X", localIdCommand), err)
 		} else {
-			resp := fmt.Sprintf("Common ID: %X Response: %X", commonIdCommand[1:], msgResp.Message[3:len(msgResp.Message)-1])
+			resp := fmt.Sprintf("Local ID: %X Response: %X", localIdCommand[1:], msgResp.Message[3:len(msgResp.Message)-1])
+			fmt.Print(resp + "\n")
 			n, err := f.WriteString(resp + "\n")
 			if err != nil {
-				log("CommonIdDump - Error writing to file", err)
+				log("LocalIdDump - Error writing to file", err)
 				return err
 			}
-			dbg(fmt.Sprintf("CommonIdDump - %s - wrote %d bytes", resp, n), nil)
+			dbg(fmt.Sprintf("LocalIdDump - %s - wrote %d bytes", resp, n), nil)
 		}
 
 		f.Sync()

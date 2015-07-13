@@ -1,6 +1,7 @@
 package main
 
 import (
+	"./disasm"
 	"./hexstuff"
 	"./iso9141"
 	"fmt"
@@ -36,14 +37,6 @@ func main() {
 			},
 		},
 		{
-			Name:      "test",
-			ShortName: "t",
-			Action: func(c *cli.Context) {
-				hs := hexstuff.New()
-				hs.Test()
-			},
-		},
-		{
 			Name:      "tests",
 			ShortName: "s",
 			Action: func(c *cli.Context) {
@@ -60,11 +53,43 @@ func main() {
 			},
 		},
 		{
+			Name:      "local",
+			ShortName: "l",
+			Action: func(c *cli.Context) {
+				obd := iso9141.New()
+				obd.LocalIdDump("LOCAL_ID")
+			},
+		},
+		{
 			Name:      "ecuId",
 			ShortName: "i",
 			Action: func(c *cli.Context) {
 				obd := iso9141.New()
 				obd.EcuId()
+			},
+		},
+		{
+			Name:      "test",
+			ShortName: "t",
+			Action: func(c *cli.Context) {
+				hs := hexstuff.New()
+				hs.Test()
+			},
+		},
+		{
+			Name:      "tests",
+			ShortName: "s",
+			Action: func(c *cli.Context) {
+				hs := hexstuff.New()
+				hs.TestS()
+			},
+		},
+		{
+			Name:      "disasm",
+			ShortName: "x",
+			Action: func(c *cli.Context) {
+				d := disasm.New()
+				d.Test()
 			},
 		},
 	}
