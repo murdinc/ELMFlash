@@ -14,26 +14,41 @@ import (
 func main() {
 
 	app := cli.NewApp()
-	app.Name = "protege-hack"
+	app.Name = "ELMFlash"
 	app.Usage = "Command Line Interface for programming the 3rd Generation Mazda Protege"
 	app.Version = "1.0"
 	app.Commands = []cli.Command{
 		{
-			Name:      "download",
-			ShortName: "d",
-			//Usage:     "Download BIN from ECU to computer",
+			Name:        "download",
+			ShortName:   "d",
+			Example:     "download",
+			Description: "Download the calibration from the ECU",
 			Action: func(c *cli.Context) {
 				obd := iso9141.New()
-				obd.DownloadBIN("DUMP")
+				obd.DownloadBIN("DOWNLOAD")
 			},
 		},
 		{
-			Name:      "upload",
-			ShortName: "u",
-			//Usage:     "Upload BIN from computer to ECU",
+			Name:        "dump",
+			ShortName:   "du",
+			Example:     "dump",
+			Description: "Dump the calibration from the ECU without security mode (slow)",
 			Action: func(c *cli.Context) {
 				obd := iso9141.New()
-				obd.UploadBIN()
+				obd.DumpBIN("DUMP")
+			},
+		},
+		{
+			Name:        "upload",
+			ShortName:   "u",
+			Example:     "upload msp",
+			Description: "Upload a calibration to the ECU",
+			Arguments: []cli.Argument{
+				cli.Argument{Name: "calibration", Usage: "upload msp", Description: "The name of the calibration to upload", Optional: false},
+			},
+			Action: func(c *cli.Context) {
+				obd := iso9141.New()
+				obd.UploadBIN(c.NamedArg("calibration"))
 			},
 		},
 		{
@@ -45,24 +60,30 @@ func main() {
 			},
 		},
 		{
-			Name:      "common",
-			ShortName: "c",
+			Name:        "common",
+			ShortName:   "c",
+			Example:     "common",
+			Description: "Crawls all Common ID's",
 			Action: func(c *cli.Context) {
 				obd := iso9141.New()
 				obd.CommonIdDump("COMMON_ID")
 			},
 		},
 		{
-			Name:      "local",
-			ShortName: "l",
+			Name:        "local",
+			ShortName:   "l",
+			Example:     "local",
+			Description: "Crawls all Local ID's",
 			Action: func(c *cli.Context) {
 				obd := iso9141.New()
 				obd.LocalIdDump("LOCAL_ID")
 			},
 		},
 		{
-			Name:      "ecuId",
-			ShortName: "i",
+			Name:        "ecuId",
+			ShortName:   "i",
+			Example:     "ecuId",
+			Description: "Retrieve the ECU ID",
 			Action: func(c *cli.Context) {
 				obd := iso9141.New()
 				obd.EcuId()
@@ -85,11 +106,16 @@ func main() {
 			},
 		},
 		{
-			Name:      "disasm",
-			ShortName: "x",
+			Name:        "disasm",
+			ShortName:   "x",
+			Example:     "disasm",
+			Description: "Disassemble Calibration File",
+			Arguments: []cli.Argument{
+				cli.Argument{Name: "calibration", Usage: "disasm msp", Description: "The name of the calibration to disassemble", Optional: false},
+			},
 			Action: func(c *cli.Context) {
 				d := disasm.New()
-				d.Test()
+				d.DisAsm(c.NamedArg("calibration"))
 			},
 		},
 	}

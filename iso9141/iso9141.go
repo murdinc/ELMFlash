@@ -60,6 +60,11 @@ var errCodes = []string{
 	0xFF: "FF - No Data",
 }
 
+var calibrations = map[string]string{
+	"msp": "MSP.BIN",
+	"mp3": "MP3.BIN",
+}
+
 var Algos = []SecAlgo{
 	SecAlgo{ID: 0x4C, Seed: []byte{0xAB, 0xED, 0xCC}, Key: []byte{0x84, 0xC4}},
 	SecAlgo{ID: 0x67, Seed: []byte{0xD3, 0xFB, 0x8C}, Key: []byte{0xAB, 0xD9}},
@@ -117,6 +122,7 @@ func (d *Device) Test() error {
 	return nil
 }
 
+// Reads an ECU memory in Security mode (faster)
 func (d *Device) DownloadBIN(outfile string) error {
 	// Make sure we have Security Access
 	if d.SecurityMode == false {
@@ -130,7 +136,6 @@ func (d *Device) DownloadBIN(outfile string) error {
 	// Open a file for writing
 	ts := time.Now().Format(time.RFC3339)
 	f, err := os.Create("./" + outfile + ts + ".BIN")
-	//f, err := os.Create(fmt.Sprintf("./%s-%s.%s.%s.%s.%s.%s", outfile, ts.Day(), ts.Month(), ts.Year(), ts.Hour(), ts.Minute(), ts.Second()))
 
 	defer f.Close()
 
@@ -142,7 +147,7 @@ func (d *Device) DownloadBIN(outfile string) error {
 
 	log("Starting Download...", nil)
 	bar := pb.StartNew(480)
-	//for i := 0x10FC00; i < 0x180000; i = i + 0x0400 {
+
 	for i := 0xFF0000; i < 0xFFFFFF; i = i + 0x0400 {
 		bar.Increment()
 		addr := i
@@ -166,7 +171,66 @@ func (d *Device) DownloadBIN(outfile string) error {
 	return nil
 }
 
-func (d *Device) UploadBIN() error {
+// DumpBIN will read an entire bin in mode 23 (no auth)
+func (d Device) DumpBIN(outfile string) error {
+	// Open a file for writing
+	ts := time.Now().Format(time.RFC3339)
+	f, err := os.Create("./" + outfile + ts + ".BIN")
+
+	defer f.Close()
+
+	fmt.Println("./" + outfile + ts + ".BIN")
+	if err != nil {
+		log("DumpBIN - Error opening file", err)
+		return err
+	}
+
+	log("Starting Dump...", nil)
+	//bar := pb.StartNew(480)
+	for i := 0x000000; i < 0x200000; i = i + 4 {
+		addr := i
+		dumpCommand := []byte{0x23, byte(addr >> 16), byte(addr >> 8), byte(i)}
+
+		// Read some bytes
+		log(fmt.Sprintf("Requesting Address: 0x%X \n", dumpCommand[1:]), nil)
+		msgResp, err := d.Msg(dumpCommand)
+		if err != nil {
+			log(fmt.Sprintf("DumpBIN - Error accessing Address:  %X", dumpCommand[1:]), err)
+			return err
+		} else {
+			contents := msgResp.Message[3:7]
+
+			// Seek to new offset
+			writeAddr64 := int64(i)
+			writeOffset, err := f.Seek(writeAddr64, 0)
+
+			n, err := f.Write(contents)
+			if err != nil {
+				log("DumpBIN - Error writing to file", err)
+				return err
+			}
+			log(fmt.Sprintf("DumpBIN - Recieved: %X - wrote %d bytes to offset 0x%.2X", contents, n, writeOffset), nil)
+		}
+
+		f.Sync()
+	}
+
+	return nil
+}
+
+// Uploads a BIN file
+func (d *Device) UploadBIN(calName string) error {
+
+	// Pull in the Calibration file
+	calFile := "./calibrations/" + calibrations[calName]
+	log(fmt.Sprintf("Calibration File: %s", calFile), nil)
+
+	f, err := os.Open(calFile)
+	if err != nil {
+		log("UploadBIN - Error opening file", err)
+		return err
+	}
+
 	// Make sure we have Security Access
 	if d.SecurityMode == false {
 		err := d.EnableSecurity()
@@ -177,7 +241,7 @@ func (d *Device) UploadBIN() error {
 	}
 
 	// Request by PID
-	_, err := d.Msg([]byte{0x22, 0x11, 0x00})
+	_, err = d.Msg([]byte{0x22, 0x11, 0x00})
 	if err != nil {
 		return err
 	}
@@ -194,13 +258,6 @@ func (d *Device) UploadBIN() error {
 		dbg("UploadBIN - Routine 31 A1", err)
 	}
 
-	// Pull in the Calibration file
-	f, err := os.Open("./calibrations/MSP.BIN")
-	if err != nil {
-		log("UploadBIN - Error opening file", err)
-		return err
-	}
-
 	// Make a 1024 byte buffer
 	block := make([]byte, 1024)
 
@@ -208,7 +265,7 @@ func (d *Device) UploadBIN() error {
 	count := 0
 	log("Starting Upload...", nil)
 	bar := pb.StartNew(480)
-	for i := 0x000000; count < 480; i = i - 0x0400 {
+	for i := 0x007C00; count < 480; i = i - 0x0400 {
 		writeOffset := 0x10FC00
 		if count != 0 && count%32 == 0 {
 			i = i + 0x10000
@@ -417,7 +474,7 @@ func (d *Device) UploadBlock(start, length int, block []byte) error {
 
 	// Set the timeout low
 	resp := d.Send(Packet{Message: []byte("AT ST 01")})
-	dbg(fmt.Sprintf("Timeout high: %X", resp.Message), nil)
+	dbg(fmt.Sprintf("Timeout low: %X", resp.Message), nil)
 
 	// Send the block
 	for i := 0; i < length; i++ {
@@ -434,7 +491,7 @@ func (d *Device) UploadBlock(start, length int, block []byte) error {
 
 	// Set the timeout high
 	resp = d.Send(Packet{Message: []byte("AT ST 00")})
-	dbg(fmt.Sprintf("Timeout high: %X", resp.Message), nil)
+	dbg(fmt.Sprintf("Timeout default: %X", resp.Message), nil)
 
 	// Request Download/Upload Transfer Exit
 	exitCommand := []byte{0x37, 0x82}
