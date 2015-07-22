@@ -53,7 +53,6 @@ func (h *DisAsm) DisAsm(calName string) error {
 
 	dbg(fmt.Sprintf("BIN - reading %d bytes.", n), nil)
 
-	//for i, b := range block {
 	opSize := 1
 	count := 1
 	for i := 0x008000; i < int(fileSize); i = i + opSize {
@@ -64,96 +63,53 @@ func (h *DisAsm) DisAsm(calName string) error {
 		if err != nil {
 			log("", err)
 		} else if instr.Ignore == false {
+
+			address := addSpaces(fmt.Sprintf("Address: [0x%X]", i), 20)
+			length := addSpaces(fmt.Sprintf(" Length: [%d]", instr.ByteLength), 14)
+			mode := addSpaces(fmt.Sprintf(" Mode: [%s]", instr.AddressingMode), 26)
+			mnemonic := addSpaces(fmt.Sprintf("	Mnemonic: [%s]", instr.Mnemonic), 23)
+			shortDesc := addSpaces(fmt.Sprintf("%s", instr.Description), 48)
+			operandCount := addSpaces(fmt.Sprintf("	Operand Count: [%d]", instr.VarCount), 23)
+			raw := addSpaces(fmt.Sprintf(" Raw: 0x%.10X", instr.Raw), 20)
+
 			count++
 			log("---------", nil)
 
-			address := addSpaces(fmt.Sprintf("Address: [0x%X]", i), 25)
-			length := addSpaces(fmt.Sprintf(" Length: [%d]", instr.ByteLength), 16)
-			mode := addSpaces(fmt.Sprintf(" Mode: [%s]", instr.AddressingMode), 28)
-			//addrModeRef :=
-			mnemonic := addSpaces(fmt.Sprintf(" Mnemonic: [%s] %s", instr.Mnemonic, instr.AddrModeRef), 40)
-			operandCount := addSpaces(fmt.Sprintf(" Operand Count: [%d]", instr.OperandCount), 50)
-			raw := addSpaces(fmt.Sprintf(" Raw: 0x%.10X", instr.Raw), 20)
+			var l1, l2, l3 string
 
-			log(address+length+mode+mnemonic+operandCount+raw, nil)
+			l1 += addSpaces("", 10)
+			l2 += addSpaces("", 10)
+			l3 += addSpaces(instr.Mnemonic, 10)
+
+			if instr.Checked {
+				log("####CHECKED", nil)
+			} else {
+				log("####NOTCHECKED", nil)
+			}
+
+			//for varStr, varMeta := range instr.Vars {
+			for _, varStr := range instr.VarStrings {
+				l1 += addSpaces(fmt.Sprintf("%s", instr.Vars[varStr].Type), 15)
+				l2 += addSpaces(fmt.Sprintf("%s", varStr), 15)
+				l3 += addSpaces(fmt.Sprintf("0x%X", instr.Vars[varStr].Value), 15)
+
+				//l1 += addSpaces(fmt.Sprintf("%s", varMeta.Type), 15)
+				//l2 += addSpaces(fmt.Sprintf("%s", varStr), 15)
+				//l3 += addSpaces(fmt.Sprintf("0x%X", varMeta.Value), 15)
+			}
+
+			log(address+mnemonic+length+mode+raw+"\n", nil)
+			log(shortDesc+operandCount, nil)
+
+			if instr.VarCount > 0 {
+				log(addSpacesL(l1, 15), nil)
+				log(addSpacesL(l2, 15), nil)
+			}
+			log(addSpacesL(l3, 15), nil)
 
 		}
 
 		opSize = instr.ByteLength
-
-		/*
-			b := block[i:]
-			firstByte := b[0]
-			var secondByte byte
-
-			if i < int(fileSize-1) {
-				secondByte = b[1]
-			}
-
-			if contains(firstByte, keys(special)) && (special[firstByte] != "multi") {
-				// This is a "special" command
-				log("---------------------------------------------------------------------------------------------------------------------------------------------------------------------------", nil)
-				log(fmt.Sprintf("Special Opcode: [%X] - [%s]", firstByte, special[firstByte]), nil)
-			}
-
-			if firstByte != 0xFE && contains(firstByte, keys(mnemonics)) {
-
-				log("---------------------------------------------------------------------------------------------------------------------------------------------------------------------------", nil)
-
-				// everything except FE
-				opSize = byteLengths[firstByte]
-				if opSize == 0 {
-					opSize = 1
-					continue
-				}
-
-				// Check if this is a variable length opcode and its , and adjust accordingly
-				if contains(firstByte, variableLengths) && (secondByte&1 == 1) {
-					log(fmt.Sprintf("Variable first byte and even second byte: [0x%X] - [%d]", secondByte, secondByte), nil)
-					opSize++
-				}
-
-				address := addSpaces(fmt.Sprintf("Address: [0x%X]", i), 25)
-				length := addSpaces(fmt.Sprintf(" Length: [%d]", opSize), 16)
-				mode := addSpaces(fmt.Sprintf(" Mode: [%s]", modes[firstByte]), 28)
-				mnemonic := addSpaces(fmt.Sprintf(" Mnemonic: [%s]", mnemonics[firstByte]), 70)
-				opLine := addSpaces(fmt.Sprintf(" Op Code: 0x%.10X", b[0:opSize]), 20)
-
-				newData, _ := Parse(b)
-
-				if newData.ByteLength == opSize {
-					continue
-				} else {
-					log("MISMATCH",nil)
-				}
-
-				log(address+length+mode+mnemonic+opLine, nil)
-				log(fmt.Sprintf("New Data: %d", newData.ByteLength), nil)
-				count++
-			} else if firstByte == 0xFE && contains(secondByte, keys(mnemonicsSigned)) {
-				log("---------------------------------------------------------------------------------------------------------------------------------------------------------------------------", nil)
-				// FE (signed multi and div) opcodes
-				opSize = byteLengthsSigned[secondByte]
-				if opSize == 0 {
-					opSize = 1
-					continue
-				}
-
-				address := addSpaces(fmt.Sprintf("Address: [0x%X]", i), 25)
-				length := addSpaces(fmt.Sprintf(" Length: [%d]", opSize), 16)
-				mode := addSpaces(fmt.Sprintf(" Mode: [%s]", modesSigned[secondByte]), 28)
-				mnemonic := addSpaces(fmt.Sprintf(" Mnemonic: [Signed %s]", mnemonicsSigned[secondByte]), 70)
-				opLine := addSpaces(fmt.Sprintf(" Op Code: 0x%.10X", b[0:opSize]), 20)
-
-				log(address+length+mode+mnemonic+opLine, nil)
-				//log(fmt.Sprintf("Address:   0x%X      length: [%d]    modes: [%s]     [Signed %s] 0x%.10X", i, opSize, modesSigned[secondByte], mnemonicsSigned[secondByte], b[0:opSize]), nil)
-
-				count++
-			} else {
-				// All Else has Failed? Or we commented it out because its a NOP?
-				opSize = 1
-			}
-		*/
 
 	}
 	log(fmt.Sprintf("Found [%d] instructions", count), nil)
@@ -166,6 +122,15 @@ func addSpaces(s string, w int) string {
 		s += strings.Repeat(" ", w-len(s))
 	}
 	return s
+}
+
+func addSpacesL(s string, w int) string {
+	l := ""
+	if len(s) < w {
+		l += strings.Repeat(" ", w-len(s))
+	}
+	l += s
+	return l
 }
 
 func keys(m map[byte]string) (keys []byte) {
@@ -199,7 +164,7 @@ func dbg(kind string, err error) {
 func log(kind string, err error) {
 	if err == nil {
 		//fmt.Printf("====> %s\n", kind)
-		fmt.Printf("	%s\n", kind)
+		fmt.Printf(" %s\n", kind)
 	} else {
 		fmt.Printf("[ERROR - %s]: %s\n", kind, err)
 	}
