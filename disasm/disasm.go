@@ -81,21 +81,14 @@ func (h *DisAsm) DisAsm(calName string) error {
 			l2 += addSpaces("", 10)
 			l3 += addSpaces(instr.Mnemonic, 10)
 
-			if instr.Checked {
-				log("####CHECKED", nil)
-			} else {
-				log("####NOTCHECKED", nil)
+			if !instr.Checked {
+				log("#### ERROR DISASEMBLING OPCODE ####", nil)
 			}
 
-			//for varStr, varMeta := range instr.Vars {
 			for _, varStr := range instr.VarStrings {
 				l1 += addSpaces(fmt.Sprintf("%s", instr.Vars[varStr].Type), 15)
 				l2 += addSpaces(fmt.Sprintf("%s", varStr), 15)
 				l3 += addSpaces(fmt.Sprintf("0x%X", instr.Vars[varStr].Value), 15)
-
-				//l1 += addSpaces(fmt.Sprintf("%s", varMeta.Type), 15)
-				//l2 += addSpaces(fmt.Sprintf("%s", varStr), 15)
-				//l3 += addSpaces(fmt.Sprintf("0x%X", varMeta.Value), 15)
 			}
 
 			log(address+mnemonic+length+mode+raw+"\n", nil)
@@ -163,7 +156,6 @@ func dbg(kind string, err error) {
 
 func log(kind string, err error) {
 	if err == nil {
-		//fmt.Printf("====> %s\n", kind)
 		fmt.Printf(" %s\n", kind)
 	} else {
 		fmt.Printf("[ERROR - %s]: %s\n", kind, err)

@@ -57,6 +57,16 @@ func Parse(in []byte) (Instruction, error) {
 			instruction.RawOps = in[1:instruction.ByteLength]
 		}
 
+		// Get our working Operand array
+		// Dont flip these to operand lists, for some reason?: 0xE1 0xE2
+		if instruction.VarCount > 1 && (firstByte != 0xE1 && firstByte != 0xE2) {
+			for _, b := range instruction.RawOps {
+				instruction.RawOpsSorted = append([]byte{b}, instruction.RawOpsSorted...)
+			}
+		} else {
+			instruction.RawOpsSorted = instruction.RawOps
+		}
+
 		instruction.Raw = in[0:instruction.ByteLength]
 
 		// Build our Vars object from the VarStrings object
@@ -75,8 +85,6 @@ func Parse(in []byte) (Instruction, error) {
 					val = []byte{instruction.Raw[0] & 3} // lower 2 bits in opcode
 
 				case "baop":
-					//val = instruction.RawOps[opOffset : opOffset+1]
-					//opOffset++
 					var l int
 					l = opOffset + 1
 					switch instruction.AddressingMode {
@@ -90,7 +98,7 @@ func Parse(in []byte) (Instruction, error) {
 						l = opOffset + 3
 					}
 
-					val = instruction.RawOps[opOffset:l]
+					val = instruction.RawOpsSorted[opOffset:l]
 					opOffset = l
 
 				case "bbb":
@@ -100,7 +108,7 @@ func Parse(in []byte) (Instruction, error) {
 					val = []byte{instruction.Raw[0] & 7} // lower 3 bits in opcode
 
 				case "breg":
-					val = instruction.RawOps[opOffset : opOffset+1]
+					val = instruction.RawOpsSorted[opOffset : opOffset+1]
 					opOffset++
 
 				case "cadd":
@@ -120,49 +128,47 @@ func Parse(in []byte) (Instruction, error) {
 						l = opOffset + 3
 					}
 
-					val = instruction.RawOps[opOffset:l]
+					val = instruction.RawOpsSorted[opOffset:l]
 					opOffset = l
 
 				case "Dbreg":
-					// TODO
-					val = instruction.RawOps[opOffset : opOffset+1]
+					val = instruction.RawOpsSorted[opOffset : opOffset+1]
 					opOffset++
 
 				case "disp":
-					// TODO
-					val = instruction.RawOps[opOffset : opOffset+1]
+					val = instruction.RawOpsSorted[opOffset : opOffset+1]
 					opOffset++
 
 				case "Dlreg":
-					val = instruction.RawOps[opOffset : opOffset+1]
+					val = instruction.RawOpsSorted[opOffset : opOffset+1]
 					opOffset++
 
 				case "Dwreg":
-					val = instruction.RawOps[opOffset : opOffset+1]
+					val = instruction.RawOpsSorted[opOffset : opOffset+1]
 					opOffset++
 
 				case "lreg":
-					val = instruction.RawOps[opOffset : opOffset+1]
+					val = instruction.RawOpsSorted[opOffset : opOffset+1]
 					opOffset++
 
 				case "ptr2_reg":
-					val = instruction.RawOps[opOffset : opOffset+1]
+					val = instruction.RawOpsSorted[opOffset : opOffset+1]
 					opOffset++
 
 				case "preg":
-					val = instruction.RawOps[opOffset : opOffset+1]
+					val = instruction.RawOpsSorted[opOffset : opOffset+1]
 					opOffset++
 
 				case "Sbreg":
-					val = instruction.RawOps[opOffset : opOffset+1]
+					val = instruction.RawOpsSorted[opOffset : opOffset+1]
 					opOffset++
 
 				case "Slreg":
-					val = instruction.RawOps[opOffset : opOffset+1]
+					val = instruction.RawOpsSorted[opOffset : opOffset+1]
 					opOffset++
 
 				case "Swreg":
-					val = instruction.RawOps[opOffset : opOffset+1]
+					val = instruction.RawOpsSorted[opOffset : opOffset+1]
 					opOffset++
 
 				case "treg":
@@ -173,7 +179,7 @@ func Parse(in []byte) (Instruction, error) {
 						l = opOffset + 4
 					}
 
-					val = instruction.RawOps[opOffset:l]
+					val = instruction.RawOpsSorted[opOffset:l]
 					opOffset = l
 
 				case "waop":
@@ -192,34 +198,24 @@ func Parse(in []byte) (Instruction, error) {
 						l = opOffset + 3
 					}
 
-					val = instruction.RawOps[opOffset:l]
+					val = instruction.RawOpsSorted[opOffset:l]
 					opOffset = l
 
 				case "w2_reg":
-					// TODO
-					val = instruction.RawOps[opOffset : opOffset+1]
+					val = instruction.RawOpsSorted[opOffset : opOffset+1]
 					opOffset++
 
 				case "wreg":
-					val = instruction.RawOps[opOffset : opOffset+1]
+					val = instruction.RawOpsSorted[opOffset : opOffset+1]
 					opOffset++
 
 				case "xxx":
 
 				case "#count":
-					val = instruction.RawOps[opOffset:]
+					val = instruction.RawOpsSorted[opOffset:]
 					opOffset += len(val)
 
 				}
-
-				/*
-					if i+1 == instruction.VarCount {
-						val = instruction.RawOps[i:]
-					} else if instruction.VarCount > 0 {
-						val = instruction.RawOps[i : i+1]
-					}
-
-				*/
 
 				tmp.Value = val
 				vars[varStr] = tmp
@@ -246,6 +242,7 @@ type Instruction struct {
 	Address        int
 	Raw            []byte
 	RawOps         []byte
+	RawOpsSorted   []byte
 	Mnemonic       string
 	Operands       []byte
 	ByteLength     int
@@ -271,9 +268,6 @@ type Variable struct {
 	Type        string
 	Value       []byte
 	Bits        int
-	//VariableBitSize int
-	//DataByteSize    int
-	//Offset          int
 }
 
 var VarObjs = map[string]Variable{
