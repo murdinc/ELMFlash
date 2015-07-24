@@ -23,9 +23,18 @@ type DisAsm struct {
 var calibrations = map[string]string{
 	"msp": "MSP.BIN",
 	"mp3": "MP3.BIN",
+	"pre": "PRE.BIN",
 }
 
 func (h *DisAsm) DisAsm(calName string) error {
+
+	// Pull in the stuff before the calibration file
+	preCalFile := "./calibrations/" + calibrations["pre"]
+	log(fmt.Sprintf("Disassemble - Pre-calibration File: %s", preCalFile), nil)
+
+	p, err := os.Open(preCalFile)
+	pi, err := p.Stat()
+	preFileSize := pi.Size()
 
 	// Pull in the Calibration file
 	calFile := "./calibrations/" + calibrations[calName]
@@ -39,23 +48,43 @@ func (h *DisAsm) DisAsm(calName string) error {
 		return err
 	}
 
+	log(fmt.Sprintf("Disassemble - [%s] is %d bytes long", calibrations["pre"], preFileSize), nil)
 	log(fmt.Sprintf("Disassemble - [%s] is %d bytes long", calibrations[calName], fileSize), nil)
 
-	// Make a buffer
-	block := make([]byte, fileSize)
+	// Make some buffers
+	preBlock := make([]byte, 0x108000)
+	calBlock := make([]byte, 0x78000)
 
-	// Read in all the bytes bytes
-	n, err := f.Read(block)
+	// Read in all the bytes
+	n, err := p.Read(preBlock)
 	if err != nil {
-		log("UploadBIN - Error reading calibration", err)
+		log("Disassemble - Error reading calibration", err)
+		return err
+	}
+	log(fmt.Sprintf("Disassemble - reading 0x%X bytes from pre-calibration file.", n), nil)
+
+	n, err = f.Read(calBlock)
+	if err != nil {
+		log("Disassemble - Error reading calibration", err)
 		return err
 	}
 
-	dbg(fmt.Sprintf("BIN - reading %d bytes.", n), nil)
+	log(fmt.Sprintf("Disassemble - reading 0x%X bytes from calibration file.", n), nil)
+
+	block := append(preBlock, calBlock...)
+
+	// Doubletime
+	//block = append(block, block[0x100000:0x180000]...)
+
+	log(fmt.Sprintf("Length: 0x%X", len(block)), nil)
 
 	opSize := 1
 	count := 1
-	for i := 0x008000; i < int(fileSize); i = i + opSize {
+	for i := 0x100000; i < len(block); i = i + opSize {
+
+		if i > 0x108000 && i < 0x11FFFF {
+			continue
+		}
 
 		b := block[i:]
 		instr, err := Parse(b)
@@ -68,8 +97,8 @@ func (h *DisAsm) DisAsm(calName string) error {
 			length := addSpaces(fmt.Sprintf(" Length: [%d]", instr.ByteLength), 14)
 			mode := addSpaces(fmt.Sprintf(" Mode: [%s]", instr.AddressingMode), 26)
 			mnemonic := addSpaces(fmt.Sprintf("	Mnemonic: [%s]", instr.Mnemonic), 23)
-			shortDesc := addSpaces(fmt.Sprintf("%s", instr.Description), 48)
-			operandCount := addSpaces(fmt.Sprintf("	Operand Count: [%d]", instr.VarCount), 23)
+			shortDesc := addSpaces(fmt.Sprintf("%s", instr.Description), 10)
+			operandCount := addSpaces(fmt.Sprintf(" [%d] Operands", instr.VarCount), 23)
 			raw := addSpaces(fmt.Sprintf(" Raw: 0x%.10X", instr.Raw), 20)
 
 			count++
@@ -91,8 +120,8 @@ func (h *DisAsm) DisAsm(calName string) error {
 				l3 += addSpaces(fmt.Sprintf("0x%X", instr.Vars[varStr].Value), 15)
 			}
 
-			log(address+mnemonic+length+mode+raw+"\n", nil)
-			log(shortDesc+operandCount, nil)
+			log(address+mnemonic+length+operandCount+mode+raw+"\n", nil)
+			log(shortDesc, nil)
 
 			if instr.VarCount > 0 {
 				log(addSpacesL(l1, 15), nil)
