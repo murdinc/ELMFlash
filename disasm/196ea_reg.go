@@ -4,6 +4,15 @@ import (
 //"errors"
 )
 
+func regName(s string, v int) string {
+	if name, ok := RegObjs[v]; ok {
+		//return s + " ~(" + name.Description + ")"
+		return s + " ~(" + name.Description + ")"
+	}
+	return s + " ~"
+	//return s
+}
+
 type Register struct {
 	Mnemonic        string
 	Description     string
@@ -972,19 +981,19 @@ var RegObjs = map[int]Register{
 	},
 
 	/*
-	   CCR0
-	   Chip Configuration 0
+		CCR0
+		Chip Configuration 0
 	*/
 
 	/*
-	   CCR1
-	   Chip Configuration 1
+		CCR1
+		Chip Configuration 1
 	*/
 
 	/*
-	   PSW
-	   Processor Status Word
-	   no direct access
+		PSW
+		Processor Status Word
+		no direct access
 	*/
 
 }

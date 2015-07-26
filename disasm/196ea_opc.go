@@ -2,13 +2,14 @@ package disasm
 
 import (
 	"errors"
+	"fmt"
 )
 
 // Instruction Set
 //////////////////////////////////////
 
 // Returns the first one line instruction in the form of an Instruction "struct" of a byte array that we are given
-func Parse(in []byte) (Instruction, error) {
+func Parse(in []byte, address int) (Instruction, error) {
 	firstByte := in[0]
 	var signed bool
 
@@ -22,7 +23,9 @@ func Parse(in []byte) (Instruction, error) {
 
 	if instruction, ok := instructions[firstByte]; ok {
 		// We have it!
+		instruction.Op = firstByte
 		instruction.Signed = signed
+		instruction.Address = address
 
 		// Check for Indexed Addressing Mode Instruction Type
 		if instruction.AddressingMode == "indexed" && instruction.VariableLength == true {
@@ -42,13 +45,6 @@ func Parse(in []byte) (Instruction, error) {
 			}
 		}
 
-		/*
-			// Add in our Reference string if we don't have it already
-			if instruction.VarTypes == nil {
-				instruction.VarTypes = addrModeRef[instruction.AddressingMode][instruction.VarCount]
-			}
-		*/
-
 		// Adjust for signed instructions
 		if signed {
 			instruction.ByteLength++
@@ -59,175 +55,42 @@ func Parse(in []byte) (Instruction, error) {
 			instruction.RawOps = in[1:instruction.ByteLength]
 		}
 
-		// Get our working Operand array
-		// Dont flip these to operand lists, for some reason?: 0xE1 0xE2
-		if instruction.VarCount > 1 && (firstByte != 0xE1 && firstByte != 0xE2) {
-			for _, b := range instruction.RawOps {
-				instruction.RawOpsSorted = append([]byte{b}, instruction.RawOpsSorted...)
-			}
-		} else {
-			instruction.RawOpsSorted = instruction.RawOps
-		}
-
 		instruction.Raw = in[0:instruction.ByteLength]
 
 		// Build our Vars object from the VarStrings object
 		if instruction.VarCount > 0 {
-			vars := map[string]Variable{}
-			opOffset := 0
-			for i, varStr := range instruction.VarStrings {
-				tmp := VarObjs[varStr]
-				tmp.Type = instruction.VarTypes[i]
 
-				// Get the variable
-				var val []byte
-				switch varStr {
+			if (firstByte & 0xf8) == 0x20 {
+				instruction.doSJMP()
 
-				case "aa":
-					val = []byte{instruction.Raw[0] & 3} // lower 2 bits in opcode
+			} else if (firstByte & 0xf8) == 0x28 {
+				instruction.doSCALL()
 
-				case "baop":
-					var l int
-					l = opOffset + 1
-					switch instruction.AddressingMode {
-					case "direct":
-						l = opOffset + 1
-					case "immediate":
-						l = opOffset + 1
-					case "indexed", "short-indexed":
-						l = opOffset + 2
-					case "long-indexed":
-						l = opOffset + 3
-					}
+			} else if (firstByte & 0xf8) == 0x30 {
+				instruction.doJBC()
 
-					val = instruction.RawOpsSorted[opOffset:l]
-					opOffset = l
+			} else if (firstByte & 0xf8) == 0x38 {
+				instruction.doJBS()
 
-				case "bbb":
-					val = []byte{instruction.Raw[0] & 7} // lower 3 bits in opcode
+			} else if (firstByte & 0xf0) == 0xd0 {
+				instruction.doCONDJMP()
 
-				case "bitno":
-					val = []byte{instruction.Raw[0] & 7} // lower 3 bits in opcode
+			} else if (firstByte & 0xf0) == 0xf0 {
+				instruction.doF0()
 
-				case "breg":
-					val = instruction.RawOpsSorted[opOffset : opOffset+1]
-					opOffset++
+			} else if (firstByte & 0xf0) == 0xe0 {
+				instruction.doE0()
 
-				case "cadd":
+			} else if (firstByte & 0xf0) == 0xc0 {
+				instruction.doC0()
 
-					var l int
-					l = opOffset + 1
-					switch instruction.AddressingMode {
-					case "direct":
-						l = opOffset + 1
-					case "immediate":
-						l = opOffset + 1
-					case "indexed":
-						l = opOffset + 1
-					case "long-indexed":
-						l = opOffset + 2
-					case "extended-indexed":
-						l = opOffset + 3
-					}
+			} else if (firstByte & 0xe0) == 0 {
+				instruction.do00()
 
-					val = instruction.RawOpsSorted[opOffset:l]
-					opOffset = l
-
-				case "Dbreg":
-					val = instruction.RawOpsSorted[opOffset : opOffset+1]
-					opOffset++
-
-				case "disp":
-					val = instruction.RawOpsSorted[opOffset : opOffset+1]
-					opOffset++
-
-				case "Dlreg":
-					val = instruction.RawOpsSorted[opOffset : opOffset+1]
-					opOffset++
-
-				case "Dwreg":
-					val = instruction.RawOpsSorted[opOffset : opOffset+1]
-					opOffset++
-
-				case "lreg":
-					val = instruction.RawOpsSorted[opOffset : opOffset+1]
-					opOffset++
-
-				case "ptr2_reg":
-					val = instruction.RawOpsSorted[opOffset : opOffset+1]
-					opOffset++
-
-				case "preg":
-					val = instruction.RawOpsSorted[opOffset : opOffset+1]
-					opOffset++
-
-				case "Sbreg":
-					val = instruction.RawOpsSorted[opOffset : opOffset+1]
-					opOffset++
-
-				case "Slreg":
-					val = instruction.RawOpsSorted[opOffset : opOffset+1]
-					opOffset++
-
-				case "Swreg":
-					val = instruction.RawOpsSorted[opOffset : opOffset+1]
-					opOffset++
-
-				case "treg":
-					var l int
-					l = opOffset + 1
-					switch instruction.AddressingMode {
-					case "extended-indexed":
-						l = opOffset + 4
-					}
-
-					val = instruction.RawOpsSorted[opOffset:l]
-					opOffset = l
-
-				case "waop":
-					var l int
-					l = opOffset + 1
-					switch instruction.AddressingMode {
-					case "direct":
-						l = opOffset + 1
-					case "immediate":
-						l = opOffset + 2
-					case "indexed":
-						l = opOffset + 2
-					case "short-indexed":
-						l = opOffset + 2
-					case "long-indexed":
-						l = opOffset + 3
-					}
-
-					val = instruction.RawOpsSorted[opOffset:l]
-					opOffset = l
-
-				case "w2_reg":
-					val = instruction.RawOpsSorted[opOffset : opOffset+1]
-					opOffset++
-
-				case "wreg":
-					val = instruction.RawOpsSorted[opOffset : opOffset+1]
-					opOffset++
-
-				case "xxx":
-
-				case "#count":
-					val = instruction.RawOpsSorted[opOffset:]
-					opOffset += len(val)
-
-				}
-
-				tmp.Value = val
-				vars[varStr] = tmp
+			} else {
+				instruction.doMIDDLE()
 			}
 
-			if (opOffset+1 == instruction.ByteLength) || (instruction.Signed && opOffset+2 == instruction.ByteLength) {
-				instruction.Checked = true
-			}
-
-			instruction.Vars = vars
 		} else {
 			instruction.Checked = true
 		}
@@ -241,19 +104,18 @@ func Parse(in []byte) (Instruction, error) {
 }
 
 type Instruction struct {
-	Address        int
-	Raw            []byte
-	RawOps         []byte
-	RawOpsSorted   []byte
-	Mnemonic       string
-	Operands       []byte
-	ByteLength     int
-	VarCount       int
-	VarStrings     []string            // baop, breg (strings)
-	Vars           map[string]Variable // baop, breg (assembled objects)
-	VarTypes       []string            // dest, src, etc
-	AddressingMode string
-	//AddrModeRef  []string
+	Op       byte
+	Address  int
+	Raw      []byte
+	RawOps   []byte
+	Mnemonic string
+	//Operands        []byte
+	ByteLength      int
+	VarCount        int
+	VarStrings      []string            // baop, breg (strings)
+	Vars            map[string]Variable // baop, breg (assembled objects)
+	VarTypes        []string            // dest, src, etc
+	AddressingMode  string
 	Description     string
 	LongDescription string
 	VariableLength  bool
@@ -263,13 +125,6 @@ type Instruction struct {
 	Ignore          bool
 	Reserved        bool
 	Checked         bool
-}
-
-type Variable struct {
-	Description string
-	Type        string
-	Value       []byte
-	Bits        int
 }
 
 var VarObjs = map[string]Variable{
@@ -359,47 +214,640 @@ var VarObjs = map[string]Variable{
 	},
 }
 
-/*
-var addrModeRef = map[string]map[int][]string{
-	// mode -> op count -> reference string
-	"direct": {
-		1: {"Dest or Src1"},
-		2: {"Dest", "Src1"},
-		3: {"Dest", "Src1", "Src2"},
-	},
-	"indirect": {
-		1: {"[addr]"},
-		2: {"Dest", "[addr]"},
-		3: {"Dest", "Src1", "[addr]"},
-	},
-	"indirect+": {
-		1: {"[addr]+"},
-		2: {"Dest", "[addr]+"},
-		3: {"Dest", "Src1", "[addr]+"},
-	},
-	"immediate": {
-		1: {"#value"},
-		2: {"Dest", "#value"},
-		3: {"Dest", "Src1", "#value"},
-	},
-	"indexed": {
-		1: {"Dest or Src1"},
-		2: {"Dest", "offs[addr]"},
-		3: {"Dest", "Src1", "offs[addr]"},
-	},
-	"short-indexed": {
-		1: {"Dest or Src1"},
-		2: {"Dest", "offs[addr]"},
-		3: {"Dest", "Src1", "offs[addr]"},
-	},
-	"long-indexed": {
-		1: {"Dest or Src1"},
-		2: {"Dest", "offs[addr]"},
-		3: {"Dest", "Src1", "offs[addr]"},
-	},
-}
-*/
 type Flags struct{}
+
+type Variable struct {
+	Description string
+	Type        string
+	Value       string
+	Bits        int
+}
+
+// SJMP
+func (instr *Instruction) doSJMP() {
+	vars := map[string]Variable{}
+	offset := int(((instr.Op & 3) << 8) | instr.RawOps[0])
+
+	if instr.Op&4 == 4 {
+		offset |= 0xFC00
+	}
+
+	cadd := VarObjs["cadd"]
+	cadd.Value = fmt.Sprintf("0x%X", instr.Address+instr.ByteLength+offset)
+	cadd.Type = instr.VarTypes[0]
+	vars["cadd"] = cadd
+	instr.Vars = vars
+	instr.Checked = true
+}
+
+// SCALL
+func (instr *Instruction) doSCALL() {
+	vars := map[string]Variable{}
+	offset := int(((instr.Op & 3) << 8) | instr.RawOps[0])
+
+	if instr.Op&4 == 4 {
+		offset |= 0xFC00
+	}
+
+	cadd := VarObjs["cadd"]
+	cadd.Value = fmt.Sprintf("0x%X", instr.Address+instr.ByteLength+offset)
+	cadd.Type = instr.VarTypes[0]
+	vars["cadd"] = cadd
+	instr.Vars = vars
+	instr.Checked = true
+}
+
+// JBC
+func (instr *Instruction) doJBC() {
+	vars := map[string]Variable{}
+	offset := int(instr.RawOps[1])
+
+	breg := VarObjs["breg"]
+
+	val := int(instr.RawOps[0])
+	str := "R%X"
+	str = regName(str, val)
+
+	breg.Value = fmt.Sprintf(str, val)
+	breg.Type = instr.VarTypes[0]
+	vars["breg"] = breg
+
+	bitno := VarObjs["bitno"]
+	bitno.Value = fmt.Sprintf("%d", instr.Op&0x07)
+	bitno.Type = instr.VarTypes[1]
+	vars["bitno"] = bitno
+
+	cadd := VarObjs["cadd"]
+
+	val = int(instr.Address + instr.ByteLength + offset)
+	str = "0x%X"
+	str = regName(str, val)
+
+	cadd.Value = fmt.Sprintf(str, val)
+	cadd.Type = instr.VarTypes[2]
+	vars["cadd"] = cadd
+
+	instr.Vars = vars
+	instr.Checked = true
+}
+
+// JBS
+func (instr *Instruction) doJBS() {
+	vars := map[string]Variable{}
+	offset := int(instr.RawOps[1])
+
+	breg := VarObjs["breg"]
+	breg.Value = fmt.Sprintf("R%X", instr.RawOps[0])
+	breg.Type = instr.VarTypes[0]
+	vars["breg"] = breg
+
+	bitno := VarObjs["bitno"]
+	bitno.Value = fmt.Sprintf("%d", instr.Op&0x07)
+	bitno.Type = instr.VarTypes[1]
+	vars["bitno"] = bitno
+
+	cadd := VarObjs["cadd"]
+	cadd.Value = fmt.Sprintf("0x%X", instr.Address+instr.ByteLength+offset)
+	cadd.Type = instr.VarTypes[2]
+	vars["cadd"] = cadd
+
+	instr.Vars = vars
+	instr.Checked = true
+}
+
+// CONDJMP
+func (instr *Instruction) doCONDJMP() {
+	vars := map[string]Variable{}
+	offset := int(instr.RawOps[0])
+
+	cadd := VarObjs["cadd"]
+	cadd.Value = fmt.Sprintf("0x%X", instr.Address+instr.ByteLength+offset)
+	cadd.Type = instr.VarTypes[0]
+	vars["cadd"] = cadd
+
+	instr.Vars = vars
+	instr.Checked = true
+}
+
+// Fx OpCodes
+func (instr *Instruction) doF0() {
+	vars := map[string]Variable{}
+	offset := int(instr.RawOps[2]<<16 | instr.RawOps[1]<<8 | instr.RawOps[0])
+
+	cadd := VarObjs["cadd"]
+	cadd.Value = fmt.Sprintf("0x%X", instr.Address+instr.ByteLength+offset)
+	cadd.Type = instr.VarTypes[0]
+	vars["cadd"] = cadd
+
+	instr.Vars = vars
+	instr.Checked = true
+}
+
+// Ex OpCodes
+func (instr *Instruction) doE0() {
+	vars := map[string]Variable{}
+	switch instr.Op {
+
+	case 0xE0, 0xE1:
+		// DJNZ, DJNZW
+		offset := int(instr.RawOps[1])
+
+		breg := VarObjs["breg"]
+
+		val := int(instr.RawOps[0])
+		str := "R%X"
+		str = regName(str, val)
+
+		breg.Value = fmt.Sprintf(str, val)
+		breg.Type = instr.VarTypes[0]
+		vars["breg"] = breg
+
+		cadd := VarObjs["cadd"]
+		cadd.Value = fmt.Sprintf("0x%X", instr.Address+instr.ByteLength+offset)
+		cadd.Type = instr.VarTypes[1]
+		vars["cadd"] = cadd
+
+		instr.Checked = true
+
+	case 0xEA, 0xEB, 0xE8, 0xE9:
+		// ELD, ELDB
+		switch instr.AddressingMode {
+
+		case "extended-indexed":
+
+			offset := int(instr.RawOps[3])<<16 | int(instr.RawOps[2])<<8 // int32 on both?
+			offset = offset | int(instr.RawOps[1])                       // int 32
+
+			offStr := "0x%06X"
+			offStr = regName(offStr, offset)
+
+			val := int(instr.RawOps[0])
+			str := "[R%02X"
+			str = regName(str, val)
+
+			treg := VarObjs["treg"]
+			treg.Value = fmt.Sprintf(offStr+str+"]", offset, val)
+			treg.Type = instr.VarTypes[1]
+
+			_reg := VarObjs[instr.VarStrings[0]]
+
+			val = int(instr.RawOps[4])
+			str = "R%02X"
+			str = regName(str, val)
+
+			_reg.Value = fmt.Sprintf(str, val)
+			_reg.Type = instr.VarTypes[0]
+
+			vars["treg"] = treg
+			vars[instr.VarStrings[0]] = _reg
+			instr.Checked = true
+
+		case "extended-indirect":
+
+			val := int(instr.RawOps[0])
+			str := "[R%02X"
+			str = regName(str, val)
+
+			treg := VarObjs["treg"]
+			treg.Value = fmt.Sprintf(str+"]", val)
+			treg.Type = instr.VarTypes[1]
+
+			val = int(instr.RawOps[1])
+			str = "R%02X"
+			str = regName(str, val)
+
+			_reg := VarObjs[instr.VarStrings[0]]
+			_reg.Value = fmt.Sprintf(str, val)
+			_reg.Type = instr.VarTypes[0]
+
+			vars["treg"] = treg
+			vars[instr.VarStrings[0]] = _reg
+			instr.Checked = true
+		}
+
+	case 0xE6:
+		// EJMP
+
+		offset := int32(instr.RawOps[2])<<16 | int32(instr.RawOps[1])<<8
+		offset = offset | int32(instr.RawOps[0])
+
+		cadd := VarObjs["cadd"]
+		cadd.Value = fmt.Sprintf("0x%X", int32(instr.Address+instr.ByteLength)+offset)
+		cadd.Type = instr.VarTypes[0]
+		vars["cadd"] = cadd
+
+		instr.Checked = true
+
+	case 0xE3:
+		// BR / EBR
+
+		val := instr.RawOps[0]
+
+		if (instr.RawOps[0] & 0x01) == 0x00 {
+			instr.Description = "BRANCH INDIRECT."
+			instr.Mnemonic = "BR"
+			instr.AddressingMode = "indirect"
+			instr.VarStrings = []string{"wreg"}
+
+		} else {
+			val &= 0xFE
+		}
+
+		vo := VarObjs[instr.VarStrings[0]]
+		vo.Value = fmt.Sprintf("[R%02X]", val)
+		vo.Type = instr.VarTypes[0]
+
+		vars[instr.VarStrings[0]] = vo
+
+		instr.Checked = true
+
+	case 0xE7, 0xEF:
+		// LJMP, LCALL
+		offset := int(instr.RawOps[0]|(instr.RawOps[1]<<8)) + 1
+
+		cadd := VarObjs["cadd"]
+		cadd.Value = fmt.Sprintf("0x%X", instr.Address+instr.ByteLength+offset)
+		cadd.Type = instr.VarTypes[0]
+		vars["cadd"] = cadd
+		instr.Checked = true
+
+	}
+	instr.Vars = vars
+	//instr.Checked = true
+}
+
+//Cx OpCodes
+func (instr *Instruction) doC0() {
+	vars := map[string]Variable{}
+	instr.Checked = true
+
+	if instr.Op == 0xC1 || instr.Op == 0xC5 || instr.AddressingMode == "direct" {
+		//BMOV / CMPL / all other direct
+		b := len(instr.RawOps) - 1
+		for i, varStr := range instr.VarStrings {
+
+			val := int(instr.RawOps[b])
+			str := "R%02X"
+			str = regName(str, val)
+
+			vo := VarObjs[varStr]
+			vo.Value = fmt.Sprintf(str, val)
+			vo.Type = instr.VarTypes[i]
+			vars[varStr] = vo
+			b--
+			instr.Checked = true
+		}
+
+	} else {
+
+		switch instr.AddressingMode {
+
+		case "immediate":
+			for i, varStr := range instr.VarStrings {
+				vo := VarObjs[varStr]
+
+				val := int(instr.RawOps[1])<<8 | int(instr.RawOps[0])
+				str := "#%04X"
+				str = regName(str, val)
+
+				vo.Value = fmt.Sprintf(str, val)
+				vo.Type = instr.VarTypes[i]
+				vars[varStr] = vo
+			}
+			instr.Checked = true
+
+		case "indirect", "indirect+":
+			b := len(instr.RawOps) - 1
+			for i, varStr := range instr.VarStrings {
+				str := "R%02X"
+				val := int(instr.RawOps[b])
+				if b == 0 {
+					str = "[R%02X]"
+					if instr.AutoIncrement == true {
+						str = str + "+"
+						val = val & 0xFE
+					}
+				}
+
+				vo := VarObjs[varStr]
+				vo.Value = fmt.Sprintf(str, val)
+				vo.Type = instr.VarTypes[i]
+				vars[varStr] = vo
+				b--
+			}
+			instr.Checked = true
+
+		case "indexed", "short-indexed":
+
+			// byte offset
+			b := len(instr.RawOps) - 1
+			for i, varStr := range instr.VarStrings {
+				vo := VarObjs[varStr]
+				val := int(instr.RawOps[b])
+				str := "R%02X"
+				str = regName(str, val)
+
+				if i+1 == instr.VarCount {
+
+					offset := int(instr.RawOps[b])
+					offStr := "0x%02X"
+					offStr = regName(offStr, offset)
+
+					val = int(instr.RawOps[b-1] & 0xFE)
+					str = "[R%02X"
+
+					str = fmt.Sprintf(offStr+str+"]", offset, val)
+					vo.Value = str
+				} else {
+					vo.Value = fmt.Sprintf(str, val)
+				}
+
+				vo.Type = instr.VarTypes[i]
+				vars[varStr] = vo
+				b--
+			}
+			instr.Checked = true
+
+		case "long-indexed":
+
+			// word offset
+			b := len(instr.RawOps) - 1
+			for i, varStr := range instr.VarStrings {
+				vo := VarObjs[varStr]
+				str := "R%02X"
+				val := int(instr.RawOps[b])
+
+				str = regName(str, val)
+
+				if i+1 == instr.VarCount {
+
+					offset := int(instr.RawOps[b])<<8 | int(instr.RawOps[b-1])
+					offStr := "0x%04X"
+					offStr = regName(offStr, offset)
+
+					val := int(instr.RawOps[b-2] & 0xFE)
+					str := "[R%02X"
+					str = regName(str, val)
+
+					str = fmt.Sprintf(offStr+str+"]", offset, val)
+					vo.Value = str
+				} else {
+					vo.Value = fmt.Sprintf(str, val)
+				}
+
+				vo.Type = instr.VarTypes[i]
+				vars[varStr] = vo
+				b--
+			}
+			instr.Checked = true
+
+		}
+
+	}
+
+	instr.Vars = vars
+	//instr.Checked = true
+
+}
+
+// 0x OpCodes
+func (instr *Instruction) do00() {
+	vars := map[string]Variable{}
+
+	if instr.Op == 0x1F || instr.Op == 0x1D {
+		switch instr.AddressingMode {
+
+		case "extended-indexed":
+
+			offset := int(instr.RawOps[3])<<16 | int(instr.RawOps[2])<<8
+			offset = offset | int(instr.RawOps[1])
+			offStr := "0x%06X"
+			offStr = regName(offStr, offset)
+
+			val := int(instr.RawOps[0])
+			str := "[R%02X"
+			str = regName(str, val)
+
+			treg := VarObjs["treg"]
+			treg.Value = fmt.Sprintf(offStr+str+"]", offset, val)
+			treg.Type = instr.VarTypes[1]
+
+			val = int(instr.RawOps[4])
+			str = "R%02X"
+			str = regName(str, val)
+
+			_reg := VarObjs[instr.VarStrings[0]]
+			_reg.Value = fmt.Sprintf(str, val)
+			_reg.Type = instr.VarTypes[0]
+
+			vars["treg"] = treg
+			vars[instr.VarStrings[0]] = _reg
+			instr.Vars = vars
+			instr.Checked = true
+
+		case "extended-indirect":
+
+			val := int(instr.RawOps[0])
+			str := "[R%02X"
+			str = regName(str, val)
+
+			treg := VarObjs["treg"]
+			treg.Value = fmt.Sprintf(str+"]", val)
+			treg.Type = instr.VarTypes[1]
+
+			val = int(instr.RawOps[1])
+			str = "R%02X"
+			str = regName(str, val)
+
+			_reg := VarObjs[instr.VarStrings[0]]
+			_reg.Value = fmt.Sprintf(str, val)
+			_reg.Type = instr.VarTypes[0]
+
+			vars["treg"] = treg
+			vars[instr.VarStrings[0]] = _reg
+			instr.Vars = vars
+			instr.Checked = true
+		}
+
+	} else {
+
+		b := len(instr.RawOps) - 1
+		for i, varStr := range instr.VarStrings {
+			vo := VarObjs[varStr]
+			val := int(instr.RawOps[b])
+			str := "R%02X"
+			str = regName(str, val)
+
+			if (instr.Op&0x08 == 0x08) && b == 0 && instr.Op != 0x0F && (instr.RawOps[0] < 0x10) {
+				str = "#%02X"
+			}
+
+			vo.Value = fmt.Sprintf(str, val)
+
+			vo.Type = instr.VarTypes[i]
+			vars[varStr] = vo
+			b--
+		}
+
+		instr.Vars = vars
+		instr.Checked = true
+
+	}
+}
+
+// Middle OpCodes ()
+func (instr *Instruction) doMIDDLE() {
+	vars := map[string]Variable{}
+
+	switch instr.AddressingMode {
+
+	case "direct":
+		b := len(instr.RawOps) - 1
+		for i, varStr := range instr.VarStrings {
+			str := "R%02X"
+			val := instr.RawOps[b]
+			str = regName(str, int(val))
+			vo := VarObjs[varStr]
+			vo.Value = fmt.Sprintf(str, val)
+			vo.Type = instr.VarTypes[i]
+			vars[varStr] = vo
+			b--
+		}
+		instr.Checked = true
+
+	case "immediate":
+		if instr.Op&0x10 == 0x10 {
+			// byte const
+			b := len(instr.RawOps) - 1
+			for i, varStr := range instr.VarStrings {
+				val := int(instr.RawOps[b])
+				str := "R%02X"
+				str = regName(str, val)
+				if b == 0 {
+					str = "#%02X"
+				}
+				vo := VarObjs[varStr]
+				vo.Value = fmt.Sprintf(str, val)
+				vo.Type = instr.VarTypes[i]
+				vars[varStr] = vo
+				b--
+			}
+
+		} else {
+			// word constant
+			b := len(instr.RawOps) - 1
+			for i, varStr := range instr.VarStrings {
+				val := int(instr.RawOps[b])
+				str := "R%02X"
+				str = regName(str, val)
+				if b == 1 {
+					str = "#%04X"
+					val = int(instr.RawOps[1])<<8 | int(instr.RawOps[0])
+				}
+
+				vo := VarObjs[varStr]
+				vo.Value = fmt.Sprintf(str, val)
+				vo.Type = instr.VarTypes[i]
+				vars[varStr] = vo
+				b--
+			}
+
+		}
+		instr.Checked = true
+
+	case "indirect", "indirect+":
+		b := len(instr.RawOps) - 1
+		for i, varStr := range instr.VarStrings {
+			str := "R%02X"
+			val := int(instr.RawOps[b])
+			str = regName(str, val)
+			if b == 0 {
+				str = "[R%02X"
+				if instr.AutoIncrement == true {
+					str = str + "+"
+					val = val & 0xFE
+				}
+				str = regName(str, val) + "]"
+			}
+
+			vo := VarObjs[varStr]
+			vo.Value = fmt.Sprintf(str, val)
+			vo.Type = instr.VarTypes[i]
+			vars[varStr] = vo
+			b--
+		}
+		instr.Checked = true
+
+	case "indexed", "short-indexed":
+
+		// byte offset
+		b := len(instr.RawOps) - 1
+		for i, varStr := range instr.VarStrings {
+			vo := VarObjs[varStr]
+			str := "R%02X"
+			val := int(instr.RawOps[b])
+			str = regName(str, val)
+
+			if i+1 == instr.VarCount {
+
+				offset := int(instr.RawOps[b])
+				offStr := "0x%02X"
+				offStr = regName(offStr, offset)
+
+				val := int(instr.RawOps[b-1] & 0xFE)
+				str := "[R%02X"
+				str = regName(str, val)
+
+				value := fmt.Sprintf(offStr+str+"]", offset, val)
+				vo.Value = value
+			} else {
+				vo.Value = fmt.Sprintf(str, val)
+			}
+
+			vo.Type = instr.VarTypes[i]
+			vars[varStr] = vo
+			b--
+		}
+		instr.Checked = true
+
+	case "long-indexed":
+
+		// word offset
+		b := len(instr.RawOps) - 1
+		for i, varStr := range instr.VarStrings {
+			vo := VarObjs[varStr]
+			val := int(instr.RawOps[b])
+			str := "R%02X"
+			str = regName(str, val)
+
+			if i+1 == instr.VarCount {
+
+				offset := int(instr.RawOps[b])<<8 | int(instr.RawOps[b-1])
+				offStr := "%04X"
+				offStr = regName(offStr, offset)
+
+				val := int(instr.RawOps[b-2] & 0xFE)
+				str := "[R%02X"
+				str = regName(str, val)
+
+				value := fmt.Sprintf(offStr+str+"]", offset, val)
+				vo.Value = value
+			} else {
+				vo.Value = fmt.Sprintf(str, val)
+			}
+
+			vo.Type = instr.VarTypes[i]
+			vars[varStr] = vo
+			b--
+		}
+		instr.Checked = true
+
+	}
+
+	instr.Vars = vars
+	//instr.Checked = true
+
+}
 
 var unsignedInstructions = map[byte]Instruction{
 	0x00: Instruction{
@@ -535,7 +983,7 @@ var unsignedInstructions = map[byte]Instruction{
 		ByteLength:      3,
 		VarCount:        2,
 		VarTypes:        []string{"DEST", "COUNT"},
-		VarStrings:      []string{"wreg", "#count"},
+		VarStrings:      []string{"wreg", "breg/#count"},
 		AddressingMode:  "direct",
 		Description:     "LOGICAL RIGHT SHIFT WORD.",
 		LongDescription: "Shifts the destination word operand to the right as many times as specified by the count operand. The count may be specified either as an immediate value in the range of 0 to 15 (0FH), inclusive, or as the content of any register (10–0FFH) with a value in the range of 0 to 31 (1FH), inclusive. The left bits of the result are filled with zeros. The last bit shifted out is saved in the carry flag.",
@@ -551,7 +999,7 @@ var unsignedInstructions = map[byte]Instruction{
 		ByteLength:      3,
 		VarCount:        2,
 		VarTypes:        []string{"DEST", "COUNT"},
-		VarStrings:      []string{"wreg", "#count"},
+		VarStrings:      []string{"wreg", "breg/#count"},
 		AddressingMode:  "direct",
 		Description:     "SHIFT WORD LEFT.",
 		LongDescription: "Shifts the destination word operand to the left as many times as specified by the count operand. The count may be specified either as an immediate value in the range of 0 to 15 (0FH), inclusive, or as the content of any register (10–0FFH) with a value in the range of 0 to 31 (1FH), inclusive. The right bits of the result are filled with zeros. The last bit shifted out is saved in the carry flag.",
@@ -567,7 +1015,7 @@ var unsignedInstructions = map[byte]Instruction{
 		ByteLength:      3,
 		VarCount:        2,
 		VarTypes:        []string{"DEST", "COUNT"},
-		VarStrings:      []string{"wreg", "#count"},
+		VarStrings:      []string{"wreg", "breg/#count"},
 		AddressingMode:  "direct",
 		Description:     "ARITHMETIC RIGHT SHIFT WORD.",
 		LongDescription: "Shifts the destination word operand to the right as many times as specified by the count operand. The count may be specified either as an immediate value in the range of 0 to 15 (0FH), inclusive, or as the content of any register (10–0FFH) with a value in the range of 0 to 31 (1FH), inclusive. If the original high order bit value was “0,” zeros are shifted in. If the value was “1,” ones are shifted in. The last bit shifted out is saved in the carry flag.",
@@ -599,7 +1047,7 @@ var unsignedInstructions = map[byte]Instruction{
 		ByteLength:      3,
 		VarCount:        2,
 		VarTypes:        []string{"DEST", "COUNT"},
-		VarStrings:      []string{"lreg", "#count"},
+		VarStrings:      []string{"lreg", "breg/#count"},
 		AddressingMode:  "direct",
 		Description:     "LOGICAL RIGHT SHIFT DOUBLE-WORD.",
 		LongDescription: "Shifts the destination double-word operand to the right as many times as specified by the count operand. The count may be specified either as an immediate value in the range of 0 to 15 (0FH), inclusive, or as the content of any register (10–0FFH) with a value in the range of 0 to 31 (1FH), inclusive. The left bits of the result are filled with zeros. The last bit shifted out is saved in the carry flag.",
@@ -615,7 +1063,7 @@ var unsignedInstructions = map[byte]Instruction{
 		ByteLength:      3,
 		VarCount:        2,
 		VarTypes:        []string{"DEST", "COUNT"},
-		VarStrings:      []string{"lreg", "#count"},
+		VarStrings:      []string{"lreg", "breg/#count"},
 		AddressingMode:  "direct",
 		Description:     "SHIFT DOUBLE-WORD LEFT.",
 		LongDescription: "Shifts the destination double-word operand to the left as many times as specified by the count operand. The count may be specified either as an immediate value in the range of 0 to 15 (0FH), inclusive, or as the content of any register (10–0FFH) with a value in the range of 0 to 31 (1FH), inclusive. The right bits of the result are filled with zeros. The last bit shifted out is saved in the carry flag.",
@@ -631,7 +1079,7 @@ var unsignedInstructions = map[byte]Instruction{
 		ByteLength:      3,
 		VarCount:        2,
 		VarTypes:        []string{"DEST", "COUNT"},
-		VarStrings:      []string{"lreg", "#count"},
+		VarStrings:      []string{"lreg", "breg/#count"},
 		AddressingMode:  "direct",
 		Description:     "ARITHMETIC RIGHT SHIFT DOUBLEWORD.",
 		LongDescription: "Shifts the destination double-word operand to the right as many times as specified by the count operand. The count may be specified either as an immediate value in the range of 0 to 15 (0FH), inclusive, or as the content of any register (10–0FFH) with a value in the range of 0 to 31 (1FH), inclusive. If the original high order bit value was “0,” zeros are shifted in. If the value was “1,” ones are shifted in.",
@@ -780,7 +1228,7 @@ var unsignedInstructions = map[byte]Instruction{
 		ByteLength:      3,
 		VarCount:        2,
 		VarTypes:        []string{"DEST", "COUNT"},
-		VarStrings:      []string{"breg", "#count"},
+		VarStrings:      []string{"breg", "breg/#count"},
 		AddressingMode:  "direct",
 		Description:     "LOGICAL RIGHT SHIFT BYTE.",
 		LongDescription: "Shifts the destination byte operand to the right as many times as specified by the count operand. The count may be specified either as an immediate value in the range of 0 to 15 (0FH), inclusive, or as the content of any register (10–0FFH) with a value in the range of 0 to 31 (1FH), inclusive. The left bits of the result are filled with zeros. The last bit shifted out is saved in the carry flag.",
@@ -796,7 +1244,7 @@ var unsignedInstructions = map[byte]Instruction{
 		ByteLength:      3,
 		VarCount:        2,
 		VarTypes:        []string{"DEST", "COUNT"},
-		VarStrings:      []string{"breg", "#count"},
+		VarStrings:      []string{"breg", "breg/#count"},
 		AddressingMode:  "direct",
 		Description:     "SHIFT BYTE LEFT.",
 		LongDescription: "Shifts the destination byte operand to the left as many times as specified by the count operand. The count may be specified either as an immediate value in the range of 0 to 15 (0FH), inclusive, or as the content of any register (10–0FFH) with a value in the range of 0 to 31 (1FH), inclusive. The right bits of the result are filled with zeros. The last bit shifted out is saved in the carry flag.",
@@ -812,7 +1260,7 @@ var unsignedInstructions = map[byte]Instruction{
 		ByteLength:      3,
 		VarCount:        2,
 		VarTypes:        []string{"DEST", "COUNT"},
-		VarStrings:      []string{"breg", "#count"},
+		VarStrings:      []string{"breg", "breg/#count"},
 		AddressingMode:  "direct",
 		Description:     "",
 		LongDescription: "",
@@ -828,7 +1276,7 @@ var unsignedInstructions = map[byte]Instruction{
 		ByteLength:      4,
 		VarCount:        2,
 		VarTypes:        []string{"DEST", "COUNT"},
-		VarStrings:      []string{"breg", "#count"},
+		VarStrings:      []string{"breg", "breg/#count"},
 		AddressingMode:  "indexed",
 		Description:     "ARITHMETIC RIGHT SHIFT BYTE.",
 		LongDescription: "Shifts the destination byte operand to the right as many times as specified by the count operand. The count may be specified either as an immediate value in the range of 0 to 15 (0FH), inclusive, or as the content of any register (10–0FFH) with a value in the range of 0 to 31 (1FH), inclusive. If the original high order bit value was “0,” zeros are shifted in. If the value was “1,” ones are shifted in. The last bit shifted out is saved in the carry flag.",

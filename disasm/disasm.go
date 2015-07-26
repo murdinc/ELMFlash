@@ -86,11 +86,11 @@ func (h *DisAsm) DisAsm(calName string) error {
 			continue
 		}
 
-		b := block[i:]
-		instr, err := Parse(b)
+		b := block[i : i+10]
+		instr, err := Parse(b, i)
 
 		if err != nil {
-			log("", err)
+			log("ERROR", err)
 		} else if instr.Ignore == false {
 
 			address := addSpaces(fmt.Sprintf("Address: [0x%X]", i), 20)
@@ -115,9 +115,9 @@ func (h *DisAsm) DisAsm(calName string) error {
 			}
 
 			for _, varStr := range instr.VarStrings {
-				l1 += addSpaces(fmt.Sprintf("%s", instr.Vars[varStr].Type), 15)
-				l2 += addSpaces(fmt.Sprintf("%s", varStr), 15)
-				l3 += addSpaces(fmt.Sprintf("0x%X", instr.Vars[varStr].Value), 15)
+				l1 += addSpaces(fmt.Sprintf("%s", instr.Vars[varStr].Type), 25)
+				l2 += addSpaces(fmt.Sprintf("%s", varStr), 25)
+				l3 += addSpaces(fmt.Sprintf("%s", instr.Vars[varStr].Value), 25)
 			}
 
 			log(address+mnemonic+length+operandCount+mode+raw+"\n", nil)
