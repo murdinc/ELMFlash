@@ -5,7 +5,7 @@ import (
 )
 
 func regName(s string, v int) string {
-	if name, ok := RegObjs[v]; ok {
+	if name, okk := RegObjs[v]; okk {
 		//return s + " ~(" + name.Description + ")"
 		return s + " ~(" + name.Description + ")"
 	}

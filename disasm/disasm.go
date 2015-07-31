@@ -3,6 +3,7 @@ package disasm
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -79,7 +80,12 @@ func (h *DisAsm) DisAsm(calName string) error {
 	log(fmt.Sprintf("Length: 0x%X", len(block)), nil)
 
 	opSize := 1
-	count := 1
+	count := 0
+
+	var opcodes []Instruction
+	subroutines := make(map[int][]Call)
+	xrefs := make(map[int][]XRef)
+
 	for i := 0x100000; i < len(block); i = i + opSize {
 
 		if i > 0x108000 && i < 0x11FFFF {
@@ -93,41 +99,26 @@ func (h *DisAsm) DisAsm(calName string) error {
 			log("ERROR", err)
 		} else if instr.Ignore == false {
 
-			address := addSpaces(fmt.Sprintf("Address: [0x%X]", i), 20)
-			length := addSpaces(fmt.Sprintf(" Length: [%d]", instr.ByteLength), 14)
-			mode := addSpaces(fmt.Sprintf(" Mode: [%s]", instr.AddressingMode), 26)
-			mnemonic := addSpaces(fmt.Sprintf("	Mnemonic: [%s]", instr.Mnemonic), 23)
-			shortDesc := addSpaces(fmt.Sprintf("%s", instr.Description), 10)
-			operandCount := addSpaces(fmt.Sprintf(" [%d] Operands", instr.VarCount), 23)
-			raw := addSpaces(fmt.Sprintf(" Raw: 0x%.10X", instr.Raw), 20)
-
 			count++
-			log("---------", nil)
-
-			var l1, l2, l3 string
-
-			l1 += addSpaces("", 10)
-			l2 += addSpaces("", 10)
-			l3 += addSpaces(instr.Mnemonic, 10)
 
 			if !instr.Checked {
 				log("#### ERROR DISASEMBLING OPCODE ####", nil)
+			} else {
+
 			}
 
-			for _, varStr := range instr.VarStrings {
-				l1 += addSpaces(fmt.Sprintf("%s", instr.Vars[varStr].Type), 25)
-				l2 += addSpaces(fmt.Sprintf("%s", varStr), 25)
-				l3 += addSpaces(fmt.Sprintf("%s", instr.Vars[varStr].Value), 25)
+			// Append our instruction to our opcodes list
+			opcodes = append(opcodes, instr)
+
+			// Append our CALL addresses to the subroutines list
+			for CallAdd, CallVal := range instr.Calls {
+				subroutines[CallAdd] = append(subroutines[CallAdd], CallVal...)
 			}
 
-			log(address+mnemonic+length+operandCount+mode+raw+"\n", nil)
-			log(shortDesc, nil)
-
-			if instr.VarCount > 0 {
-				log(addSpacesL(l1, 15), nil)
-				log(addSpacesL(l2, 15), nil)
+			// Append out xrefs to our xrefs list
+			for XRefAdd, XRefVal := range instr.XRefs {
+				xrefs[XRefAdd] = append(xrefs[XRefAdd], XRefVal...)
 			}
-			log(addSpacesL(l3, 15), nil)
 
 		}
 
@@ -135,6 +126,96 @@ func (h *DisAsm) DisAsm(calName string) error {
 
 	}
 	log(fmt.Sprintf("Found [%d] instructions", count), nil)
+	log(fmt.Sprintf("Found [%d] XRefs", len(xrefs)), nil)
+	log(fmt.Sprintf("Found [%d] Subroutines", len(subroutines)), nil)
+
+	// Print out the Assembly
+	for _, instr := range opcodes {
+
+		if subroutines[instr.Address] != nil {
+			log("\n==================================================================================================================================================================", nil)
+			callers := ""
+			for _, caller := range subroutines[instr.Address] {
+				callers = callers + fmt.Sprintf("[CALLED FROM 0x%X - %s] ", caller.CallFrom, caller.Mnemonic)
+			}
+			log(fmt.Sprintf("SUB_0x%X %s", instr.Address, callers), nil)
+
+		}
+
+		address := addSpaces(fmt.Sprintf("Address: [0x%X]", instr.Address), 20)
+		length := addSpaces(fmt.Sprintf(" Length: [%d]", instr.ByteLength), 14)
+		mode := addSpaces(fmt.Sprintf(" Mode: [%s]", instr.AddressingMode), 26)
+		mnemonic := addSpaces(fmt.Sprintf(" Mnemonic: [%s]", instr.Mnemonic), 23)
+		shortDesc := addSpaces(fmt.Sprintf("%s", instr.Description), 10)
+		operandCount := addSpaces(fmt.Sprintf(" [%d] Operands", instr.VarCount), 23)
+		raw := addSpaces(fmt.Sprintf(" Raw: 0x%.10X", instr.Raw), 20)
+
+		count++
+		log("---------", nil)
+
+		var l1, l2, l3 string
+
+		l1 += addSpaces("", 10)
+		l2 += addSpaces("", 10)
+		l3 += addSpaces(instr.Mnemonic, 10)
+
+		if !instr.Checked {
+			log("#### ERROR DISASEMBLING OPCODE ####", nil)
+		}
+
+		for _, varStr := range instr.VarStrings {
+			l1 += addSpaces(fmt.Sprintf("%s", instr.Vars[varStr].Type), 25)
+			l2 += addSpaces(fmt.Sprintf("%s", varStr), 25)
+			l3 += addSpaces(fmt.Sprintf("%s", instr.Vars[varStr].Value), 25)
+		}
+
+		log(address+mnemonic+length+operandCount+mode+raw+"\n", nil)
+		log(shortDesc, nil)
+
+		if instr.VarCount > 0 {
+			log(addSpacesL(l1, 15), nil)
+			log(addSpacesL(l2, 15), nil)
+		}
+		log(addSpacesL(l3, 15), nil)
+
+		for XRefAdd, XRefVal := range instr.XRefs {
+			xrefs[XRefAdd] = append(xrefs[XRefAdd], XRefVal...)
+		}
+	}
+
+	// Sort and print the list of address references collected
+	var keys []int
+	for k := range xrefs {
+		keys = append(keys, k)
+	}
+	sort.Ints(keys)
+
+	for _, k := range keys {
+
+		log(fmt.Sprintf("0x%X", k), nil)
+
+		for _, ref := range xrefs[k] {
+			log(fmt.Sprintf("       [%s] XREF  [%s] AT 0x%X", ref.String, ref.Mnemonic, ref.XRefFrom), nil)
+		}
+	}
+
+	// Print the list of subroutines
+	var sKeys []int
+	for s := range subroutines {
+		sKeys = append(sKeys, s)
+	}
+
+	sort.Ints(sKeys)
+
+	for _, s := range sKeys {
+
+		log(fmt.Sprintf("SUB_0x%X", s), nil)
+
+		for _, sub := range subroutines[s] {
+			log(fmt.Sprintf("       [%s] AT 0x%X", sub.Mnemonic, sub.CallFrom), nil)
+		}
+	}
+
 	return nil
 
 }
