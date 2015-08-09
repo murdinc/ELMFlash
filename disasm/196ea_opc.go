@@ -5,6 +5,7 @@ import (
 	//"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // Instruction Set
@@ -64,9 +65,11 @@ func Parse(in []byte, address int) (Instruction, error) {
 
 			if (firstByte & 0xf8) == 0x20 {
 				instruction.doSJMP()
+				instruction.doPseudo()
 
 			} else if (firstByte & 0xf8) == 0x28 {
 				instruction.doSCALL()
+				instruction.doPseudo()
 
 			} else if (firstByte & 0xf8) == 0x30 {
 				instruction.doJBC()
@@ -76,21 +79,27 @@ func Parse(in []byte, address int) (Instruction, error) {
 
 			} else if (firstByte & 0xf0) == 0xd0 {
 				instruction.doCONDJMP()
+				instruction.doPseudo()
 
 			} else if (firstByte & 0xf0) == 0xf0 {
 				instruction.doF0()
+				instruction.doPseudo()
 
 			} else if (firstByte & 0xf0) == 0xe0 {
 				instruction.doE0()
+				instruction.doPseudo()
 
 			} else if (firstByte & 0xf0) == 0xc0 {
 				instruction.doC0()
+				instruction.doPseudo()
 
 			} else if (firstByte & 0xe0) == 0 {
 				instruction.do00()
+				instruction.doPseudo()
 
 			} else {
 				instruction.doMIDDLE()
+				instruction.doPseudo()
 			}
 
 		} else {
@@ -110,6 +119,7 @@ type Instruction struct {
 	Address         int
 	XRefs           map[int][]XRef
 	Calls           map[int][]Call
+	Jumps           map[int][]Jump
 	Raw             []byte
 	RawOps          []byte
 	Mnemonic        string
@@ -117,7 +127,9 @@ type Instruction struct {
 	VarCount        int
 	VarStrings      []string            // baop, breg (strings)
 	Vars            map[string]Variable // baop, breg (assembled objects)
-	VarTypes        []string            // dest, src, etc
+	PseudoCode      string
+	PseudoString    string
+	VarTypes        []string // dest, src, etc
 	AddressingMode  string
 	Description     string
 	LongDescription string
@@ -240,9 +252,17 @@ type Call struct {
 	CallTo   int
 }
 
+type Jump struct {
+	String   string
+	Mnemonic string
+	JumpFrom int
+	JumpTo   int
+}
+
 // XRef
 func (instr *Instruction) XRef(s string, v int) {
-	if v != 0x00 && instr.Mnemonic != "JBC" {
+	//if v != 0x00 && instr.Mnemonic != "JBC" {
+	if v != 0x00 {
 
 		existing := instr.XRefs
 		if existing == nil {
@@ -261,18 +281,85 @@ func (instr *Instruction) Call(s string, v int) {
 	instr.Calls[v] = append(existing[v], Call{String: fmt.Sprintf(s, v), Mnemonic: instr.Mnemonic, CallFrom: instr.Address, CallTo: v})
 }
 
-// Get Offset
-/*
-func getOffset(data []byte) (ret int64) {
-	buf := bytes.NewBuffer(data)
-	ret, _ = binary.ReadVarint(buf)
-	//binary.Read(buf, binary.LittleEndian, &ret)
-
-	//log(fmt.Sprintf("~~~~~~~~~~~~~OFFSET: %d [%X]", ret, data), nil)
-
-	return
+// Jump
+func (instr *Instruction) Jump(s string, v int) {
+	existing := instr.Jumps
+	if existing == nil {
+		instr.Jumps = make(map[int][]Jump)
+	}
+	instr.Jumps[v] = append(existing[v], Jump{String: fmt.Sprintf(s, v), Mnemonic: instr.Mnemonic, JumpFrom: instr.Address, JumpTo: v})
 }
-*/
+
+// Do Pseudo
+func (instr *Instruction) doPseudo() {
+	var v [2]string
+
+	for _, varStr := range instr.VarStrings {
+
+		val := instr.Vars[varStr].Value
+		val = strings.Replace(val, "[R00 ~(Zero Register)]", "", 1)
+		val = strings.Replace(val, "R", "$r_", 1)
+		val = strings.Replace(val, " ~(", " (", 1)
+		val = strings.Replace(val, " ~", "", 1)
+		val = strings.Replace(val, "#", "0x", 1)
+
+		switch instr.Vars[varStr].Type {
+		case "DEST":
+			val = strings.Replace(val, "0x000", "$r_", 1)
+			val = strings.Replace(val, "0x00", "$r_", 1)
+			val = strings.Replace(val, "0x", "$r_", 1)
+			v[0] = val
+		case "ADDR":
+			v[0] = val
+		default:
+			v[1] = val
+		}
+	}
+
+	switch instr.Mnemonic {
+
+	case "INC":
+		instr.PseudoCode = fmt.Sprintf("%s++", v[0])
+
+	case "CLR", "CLRB":
+		instr.PseudoCode = fmt.Sprintf("%s = 0", v[0])
+
+	case "EXT":
+		instr.PseudoCode = fmt.Sprintf("SIGN EXTEND INT %s TO LONG INT", v[0])
+
+	case "EXTB":
+		instr.PseudoCode = fmt.Sprintf("SIGN EXTEND SHORT INT %s TO INT", v[0])
+
+	case "JNST", "JNH", "JGT", "JNC", "JNVT", "JNV", "JGE", "JNE", "JST", "JH", "JLE", "JC", "JVT", "JV", "JLT", "JE", "LJMP", "SJMP":
+		instr.PseudoCode = fmt.Sprintf("JUMP TO: %s", v[0])
+
+	case "ECALL", "CALL", "SCALL", "LCALL":
+		instr.PseudoCode = fmt.Sprintf("CALL SUB_%s", v[0])
+
+	case "PUSH":
+		instr.PseudoCode = fmt.Sprintf("PUSH %s ONTO THE STACK", v[1])
+
+	case "POP":
+		instr.PseudoCode = fmt.Sprintf("POP THE STACK TO %s", v[0])
+
+	case "CMPB", "CMP":
+		instr.PseudoCode = fmt.Sprintf("if (%s == %s) {", v[0], v[1])
+
+	case "ANDB", "AND":
+		instr.PseudoCode = fmt.Sprintf("%s = %s & %s", v[0], v[0], v[1])
+
+	case "ORB", "OR":
+		instr.PseudoCode = fmt.Sprintf("%s = %s | %s", v[0], v[0], v[1])
+
+	case "ADD", "ADDC":
+		instr.PseudoCode = fmt.Sprintf("%s = %s + %s", v[0], v[0], v[1])
+
+	default:
+		instr.PseudoCode = fmt.Sprintf("%s = %s", v[0], v[1])
+	}
+}
+
+// Get Offset
 func getOffset(data []byte) int32 {
 	return int32(uint32(data[0]) + uint32(data[1])<<8)
 }
@@ -283,10 +370,15 @@ func (instr *Instruction) doSJMP() {
 
 	b0 := instr.Op & 3
 	if instr.Op&4 == 4 {
-		b0 |= 0xFC
+		b0 |= 0xFC00
 	}
 
 	offset := int(getOffset([]byte{instr.RawOps[0], b0}))
+
+	str := "0x%X"
+	val := int(instr.Address + instr.ByteLength + offset)
+	instr.Jump(str, val)
+	instr.XRef(str, val)
 
 	cadd := VarObjs["cadd"]
 	cadd.Value = fmt.Sprintf("0x%X", instr.Address+instr.ByteLength+offset)
@@ -302,7 +394,7 @@ func (instr *Instruction) doSCALL() {
 
 	b0 := instr.Op & 3
 	if instr.Op&4 == 4 {
-		b0 |= 0xFC
+		b0 |= 0xFC00
 	}
 
 	offset := int(getOffset([]byte{instr.RawOps[0], b0}))
@@ -348,6 +440,7 @@ func (instr *Instruction) doJBC() {
 	str = "0x%X"
 	str = regName(str, val)
 	instr.XRef(str, val)
+	instr.Jump(str, val)
 
 	cadd.Value = fmt.Sprintf(str, val)
 	cadd.Type = instr.VarTypes[2]
@@ -386,8 +479,13 @@ func (instr *Instruction) doCONDJMP() {
 	vars := map[string]Variable{}
 	offset := int(instr.RawOps[0])
 
+	str := "0x%X"
+	val := int(instr.Address + instr.ByteLength + offset)
+	instr.Jump(str, val)
+	instr.XRef(str, val)
+
 	cadd := VarObjs["cadd"]
-	cadd.Value = fmt.Sprintf("0x%X", instr.Address+instr.ByteLength+offset)
+	cadd.Value = fmt.Sprintf(str, val)
 	cadd.Type = instr.VarTypes[0]
 	vars["cadd"] = cadd
 
@@ -400,8 +498,15 @@ func (instr *Instruction) doF0() {
 	vars := map[string]Variable{}
 	offset := int(instr.RawOps[2]<<16 | instr.RawOps[1]<<8 | instr.RawOps[0])
 
+	str := "0x%X"
+	val := int(instr.Address + instr.ByteLength + offset)
+	instr.XRef(str, val)
+	if instr.Mnemonic == "ECALL" {
+		instr.Call(str, val)
+	}
+
 	cadd := VarObjs["cadd"]
-	cadd.Value = fmt.Sprintf("0x%X", instr.Address+instr.ByteLength+offset)
+	cadd.Value = fmt.Sprintf(str, val)
 	cadd.Type = instr.VarTypes[0]
 	vars["cadd"] = cadd
 
@@ -499,13 +604,12 @@ func (instr *Instruction) doE0() {
 
 	case 0xE6:
 		// EJMP
+		offset := int(uint32(instr.RawOps[0]) | uint32(instr.RawOps[1])<<8 | uint32(instr.RawOps[2])<<16)
 
-		offset := int32(instr.RawOps[2])<<16 | int32(instr.RawOps[1])<<8
-		offset = offset | int32(instr.RawOps[0])
-
-		val := int(int32(instr.Address+instr.ByteLength) + offset)
+		val := instr.Address + instr.ByteLength + offset
 		str := "0x%X"
 		str = regName(str, val)
+		instr.Jump(str, val)
 		instr.XRef(str, val)
 
 		cadd := VarObjs["cadd"]
@@ -553,8 +657,6 @@ func (instr *Instruction) doE0() {
 
 		offset = int(getOffset(instr.RawOps[0:2]))
 
-		//log(fmt.Sprintf("TEST: %d", offsetTest), nil)
-
 		cadd := VarObjs["cadd"]
 		str := "0x%X"
 		val := int(instr.Address + instr.ByteLength + offset)
@@ -562,7 +664,10 @@ func (instr *Instruction) doE0() {
 		str = regName(str, val)
 		if instr.Mnemonic == "LCALL" {
 			instr.Call(str, val)
+		} else {
+			instr.Jump(str, val)
 		}
+
 		instr.XRef(str, val)
 
 		cadd.Value = fmt.Sprintf(str, val)
@@ -621,7 +726,7 @@ func (instr *Instruction) doC0() {
 			b := len(instr.RawOps) - 1
 			for i, varStr := range instr.VarStrings {
 				str := "R%02X"
-				val := int(instr.RawOps[b])
+				val := int(instr.RawOps[b] & 0xFE)
 				if b == 0 {
 					str = "[R%02X]"
 					if instr.AutoIncrement == true {
@@ -677,11 +782,8 @@ func (instr *Instruction) doC0() {
 			b := len(instr.RawOps) - 1
 			for i, varStr := range instr.VarStrings {
 				vo := VarObjs[varStr]
-				str := "R%02X"
 				val := int(instr.RawOps[b])
-
-				str = regName(str, val)
-				instr.XRef(str, val)
+				str := "R%02X"
 
 				if i+1 == instr.VarCount {
 
@@ -695,10 +797,12 @@ func (instr *Instruction) doC0() {
 					str = regName(str, val)
 					instr.XRef(str, val)
 
-					str = fmt.Sprintf(offStr+str+"]", offset, val)
-					vo.Value = str
+					value := fmt.Sprintf(offStr+str+"]", offset, val)
+					vo.Value = value
 				} else {
+					str = regName(str, val)
 					vo.Value = fmt.Sprintf(str, val)
+					instr.XRef(str, val)
 				}
 
 				vo.Type = instr.VarTypes[i]
@@ -706,7 +810,6 @@ func (instr *Instruction) doC0() {
 				b--
 			}
 			instr.Checked = true
-
 		}
 
 	}
@@ -876,7 +979,7 @@ func (instr *Instruction) doMIDDLE() {
 		b := len(instr.RawOps) - 1
 		for i, varStr := range instr.VarStrings {
 			str := "R%02X"
-			val := int(instr.RawOps[b])
+			val := int(instr.RawOps[b] & 0xFE)
 			str = regName(str, val)
 			if b == 0 {
 				str = "[R%02X"
@@ -955,6 +1058,7 @@ func (instr *Instruction) doMIDDLE() {
 				value := fmt.Sprintf(offStr+str+"]", offset, val)
 				vo.Value = value
 			} else {
+				str = regName(str, val)
 				vo.Value = fmt.Sprintf(str, val)
 				instr.XRef(str, val)
 			}
@@ -1284,7 +1388,7 @@ var unsignedInstructions = map[byte]Instruction{
 	},
 	0x14: Instruction{
 		Mnemonic:        "XCHB",
-		ByteLength:      2,
+		ByteLength:      3, // Changed? was 2
 		VarCount:        2,
 		VarTypes:        []string{"DEST", "SRC"},
 		VarStrings:      []string{"breg", "baop"},

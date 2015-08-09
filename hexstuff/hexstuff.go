@@ -33,25 +33,64 @@ type HexStuff struct {
 	location string
 }
 
-func (h *HexStuff) TestS() error {
+var calibrations = map[string]string{
+	"msp": "MSP.BIN",
+	"mp3": "MP3.BIN",
+	"p5":  "P5.BIN",
+	"pre": "PRE.BIN",
+}
+
+func (h *HexStuff) TestM2(calName string) error {
+
+	// Pull in the stuff before the calibration file
+	preCalFile := "./calibrations/" + calibrations["pre"]
+	log(fmt.Sprintf("TestM2 - Pre-calibration File: %s", preCalFile), nil)
+
+	p, err := os.Open(preCalFile)
+	pi, err := p.Stat()
+	preFileSize := pi.Size()
 
 	// Pull in the Calibration file
-	f, err := os.Open("calibrations/MSP.BIN")
+	calFile := "./calibrations/" + calibrations[calName]
+	log(fmt.Sprintf("TestM2 - Calibration File: %s", calFile), nil)
+
+	f, err := os.Open(calFile)
+	fi, err := f.Stat()
+	fileSize := fi.Size()
 	if err != nil {
-		log("BIN - Error opening file", err)
+		log("TestM2 - Error opening file", err)
 		return err
 	}
 
-	// Make a 1024 byte buffer
-	block := make([]byte, 524288)
+	log(fmt.Sprintf("TestM2 - [%s] is %d bytes long", calibrations["pre"], preFileSize), nil)
+	log(fmt.Sprintf("TestM2 - [%s] is %d bytes long", calibrations[calName], fileSize), nil)
 
-	// Read 1024 bytes
-	n, err := f.Read(block)
+	// Make some buffers
+	preBlock := make([]byte, 0x108000)
+	calBlock := make([]byte, 0x78000)
+
+	// Read in all the bytes
+	n, err := p.Read(preBlock)
 	if err != nil {
-		log("UploadBIN - Error reading calibration", err)
+		log("TestM2 - Error reading calibration", err)
 		return err
 	}
-	dbg(fmt.Sprintf("BIN - reading %d bytes.", n), nil)
+	log(fmt.Sprintf("TestM2 - reading 0x%X bytes from pre-calibration file.", n), nil)
+
+	n, err = f.Read(calBlock)
+	if err != nil {
+		log("TestM2 - Error reading calibration", err)
+		return err
+	}
+
+	log(fmt.Sprintf("TestM2 - reading 0x%X bytes from calibration file.", n), nil)
+
+	block := append(preBlock, calBlock...)
+
+	// Doubletime
+	//block = append(block, block[0x100000:0x180000]...)
+
+	log(fmt.Sprintf("Length: 0x%X", len(block)), nil)
 
 	regex := string(0x00) + string(0x04) + "|" +
 		string(0x00) + string(0x00) + string(0x00) + string(0x00) + string(0x06) + "|" +
@@ -74,15 +113,9 @@ func (h *HexStuff) TestS() error {
 Loop:
 	for _, i := range matches {
 
-		// Break if we are past the point we are testing for
-		//if i[0] >= 0x1875 {
-		if i[0] > 0x10000 {
-			break Loop
-		}
-
-		// Break if we are over the 0x10000 limit
-		if i[0] > 0x10000 {
-			break
+		// Continue if we are past the point we are testing for
+		if i[0] < 0x108000 || i[0] > 0x118000 {
+			continue
 		}
 
 		// Set the index of the block file
@@ -237,28 +270,57 @@ Loop:
 }
 
 // TEST
-func (h *HexStuff) Test() error {
+func (h *HexStuff) TestM1(calName string) error {
+
+	// Pull in the stuff before the calibration file
+	preCalFile := "./calibrations/" + calibrations["pre"]
+	log(fmt.Sprintf("TestM1 - Pre-calibration File: %s", preCalFile), nil)
+
+	p, err := os.Open(preCalFile)
+	pi, err := p.Stat()
+	preFileSize := pi.Size()
 
 	// Pull in the Calibration file
-	f, err := os.Open("calibrations/MSP.BIN")
+	calFile := "./calibrations/" + calibrations[calName]
+	log(fmt.Sprintf("TestM1 - Calibration File: %s", calFile), nil)
+
+	f, err := os.Open(calFile)
+	fi, err := f.Stat()
+	fileSize := fi.Size()
 	if err != nil {
-		log("BIN - Error opening file", err)
+		log("TestM1 - Error opening file", err)
 		return err
 	}
 
-	// Make a 1024 byte buffer
-	//block := make([]byte, 1024)
-	block := make([]byte, 524288)
+	log(fmt.Sprintf("TestM1 - [%s] is %d bytes long", calibrations["pre"], preFileSize), nil)
+	log(fmt.Sprintf("TestM1 - [%s] is %d bytes long", calibrations[calName], fileSize), nil)
 
-	// Read 1024 bytes
-	n, err := f.Read(block)
+	// Make some buffers
+	preBlock := make([]byte, 0x108000)
+	calBlock := make([]byte, 0x78000)
+
+	// Read in all the bytes
+	n, err := p.Read(preBlock)
 	if err != nil {
-		log("UploadBIN - Error reading calibration", err)
+		log("TestM1 - Error reading calibration", err)
 		return err
 	}
-	dbg(fmt.Sprintf("BIN - reading %d bytes.", n), nil)
+	log(fmt.Sprintf("TestM1 - reading 0x%X bytes from pre-calibration file.", n), nil)
 
-	//fmt.Print(block)
+	n, err = f.Read(calBlock)
+	if err != nil {
+		log("TestM1 - Error reading calibration", err)
+		return err
+	}
+
+	log(fmt.Sprintf("TestM1 - reading 0x%X bytes from calibration file.", n), nil)
+
+	block := append(preBlock, calBlock...)
+
+	// Doubletime
+	//block = append(block, block[0x100000:0x180000]...)
+
+	log(fmt.Sprintf("Length: 0x%X", len(block)), nil)
 
 	//regex := string([]byte{0x00, 0x04, 0x00, 0x02})
 	regex := string(0x00) + "[" + string(0x01) + "-" + string(0x04) + "]" + string(0x00) + "[" + string(0x02) + "-" + string(0x09) + "]"
@@ -272,7 +334,7 @@ func (h *HexStuff) Test() error {
 	previous := 0x0000
 
 	for _, i := range matches {
-		if i[0]%2 == 0 && i[0] >= previous && i[0] < 0x10000 {
+		if i[0]%2 == 0 && i[0] >= previous && i[0] > 0x108000 && i[0] < 0x118000 {
 			index := i[0]
 
 			if block[index+6] == 0x08 || block[index+6] == 0x09 || block[index+6] == 0x07 || block[index+6] == 0x06 || block[index+6] == 0x10 {
