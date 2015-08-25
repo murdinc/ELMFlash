@@ -262,7 +262,7 @@ type Jump struct {
 // XRef
 func (instr *Instruction) XRef(s string, v int) {
 	//if v != 0x00 && instr.Mnemonic != "JBC" {
-	if v != 0x00 {
+	if v > 0x02 {
 
 		existing := instr.XRefs
 		if existing == nil {
@@ -297,8 +297,8 @@ func (instr *Instruction) doPseudo() {
 	for _, varStr := range instr.VarStrings {
 
 		val := instr.Vars[varStr].Value
-		val = strings.Replace(val, "[R00 ~(Zero Register)]", "", 1)
-		val = strings.Replace(val, "R", "$r_", 1)
+		val = strings.Replace(val, "[R_00 ~(Zero Register)]", "", 1)
+		val = strings.Replace(val, "R_", "$r_", 1)
 		val = strings.Replace(val, " ~(", " (", 1)
 		val = strings.Replace(val, " ~", "", 1)
 		val = strings.Replace(val, "#", "0x", 1)
@@ -368,13 +368,12 @@ func getOffset(data []byte) int32 {
 func (instr *Instruction) doSJMP() {
 	vars := map[string]Variable{}
 
-	b0 := instr.Op & 3
+	//offset := int(instr.Op&3)<<8 | int(instr.RawOps[0])
+	offset := int(getOffset([]byte{instr.Op & 3, instr.RawOps[0]}))
+
 	if instr.Op&4 == 4 {
-		b0 |= 0xFC00
+		offset |= 0xFC00
 	}
-
-	offset := int(getOffset([]byte{instr.RawOps[0], b0}))
-
 	str := "0x%X"
 	val := int(instr.Address + instr.ByteLength + offset)
 	instr.Jump(str, val)
@@ -392,12 +391,12 @@ func (instr *Instruction) doSJMP() {
 func (instr *Instruction) doSCALL() {
 	vars := map[string]Variable{}
 
-	b0 := instr.Op & 3
-	if instr.Op&4 == 4 {
-		b0 |= 0xFC00
-	}
+	//offset := int(instr.Op&3)<<8 | int(instr.RawOps[0])
+	offset := int(getOffset([]byte{instr.Op & 3, instr.RawOps[0]}))
 
-	offset := int(getOffset([]byte{instr.RawOps[0], b0}))
+	if instr.Op&4 == 4 {
+		offset |= 0xFC00
+	}
 
 	cadd := VarObjs["cadd"]
 
@@ -421,7 +420,7 @@ func (instr *Instruction) doJBC() {
 	breg := VarObjs["breg"]
 
 	val := int(instr.RawOps[0])
-	str := "R%X"
+	str := "R_%X"
 	str = regName(str, val)
 	instr.XRef(str, val)
 
@@ -526,7 +525,7 @@ func (instr *Instruction) doE0() {
 		breg := VarObjs["breg"]
 
 		val := int(instr.RawOps[0])
-		str := "R%X"
+		str := "R_%X"
 		str = regName(str, val)
 		instr.XRef(str, val)
 
@@ -555,7 +554,7 @@ func (instr *Instruction) doE0() {
 			instr.XRef(offStr, offset)
 
 			val := int(instr.RawOps[0])
-			str := "[R%02X"
+			str := "[R_%02X"
 			str = regName(str, val)
 			instr.XRef(str, val)
 
@@ -566,7 +565,7 @@ func (instr *Instruction) doE0() {
 			_reg := VarObjs[instr.VarStrings[0]]
 
 			val = int(instr.RawOps[4])
-			str = "R%02X"
+			str = "R_%02X"
 			str = regName(str, val)
 			instr.XRef(str, val)
 
@@ -691,7 +690,7 @@ func (instr *Instruction) doC0() {
 		for i, varStr := range instr.VarStrings {
 
 			val := int(instr.RawOps[b])
-			str := "R%02X"
+			str := "R_%02X"
 			str = regName(str, val)
 			instr.XRef(str, val)
 
@@ -725,7 +724,7 @@ func (instr *Instruction) doC0() {
 		case "indirect", "indirect+":
 			b := len(instr.RawOps) - 1
 			for i, varStr := range instr.VarStrings {
-				str := "R%02X"
+				str := "R_%02X"
 				val := int(instr.RawOps[b] & 0xFE)
 				if b == 0 {
 					str = "[R%02X]"
@@ -750,7 +749,7 @@ func (instr *Instruction) doC0() {
 			for i, varStr := range instr.VarStrings {
 				vo := VarObjs[varStr]
 				val := int(instr.RawOps[b])
-				str := "R%02X"
+				str := "R_%02X"
 				str = regName(str, val)
 				instr.XRef(str, val)
 
@@ -783,7 +782,7 @@ func (instr *Instruction) doC0() {
 			for i, varStr := range instr.VarStrings {
 				vo := VarObjs[varStr]
 				val := int(instr.RawOps[b])
-				str := "R%02X"
+				str := "R_%02X"
 
 				if i+1 == instr.VarCount {
 
@@ -889,7 +888,7 @@ func (instr *Instruction) do00() {
 		for i, varStr := range instr.VarStrings {
 			vo := VarObjs[varStr]
 			val := int(instr.RawOps[b])
-			str := "R%02X"
+			str := "R_%02X"
 			str = regName(str, val)
 			instr.XRef(str, val)
 
@@ -919,7 +918,7 @@ func (instr *Instruction) doMIDDLE() {
 	case "direct":
 		b := len(instr.RawOps) - 1
 		for i, varStr := range instr.VarStrings {
-			str := "R%02X"
+			str := "R_%02X"
 			val := int(instr.RawOps[b])
 			str = regName(str, val)
 			instr.XRef(str, val)
@@ -937,7 +936,7 @@ func (instr *Instruction) doMIDDLE() {
 			b := len(instr.RawOps) - 1
 			for i, varStr := range instr.VarStrings {
 				val := int(instr.RawOps[b])
-				str := "R%02X"
+				str := "R_%02X"
 				str = regName(str, val)
 				if b == 0 {
 					str = "#%02X"
@@ -956,7 +955,7 @@ func (instr *Instruction) doMIDDLE() {
 			b := len(instr.RawOps) - 1
 			for i, varStr := range instr.VarStrings {
 				val := int(instr.RawOps[b])
-				str := "R%02X"
+				str := "R_%02X"
 				str = regName(str, val)
 				if b == 1 {
 					str = "#%04X"
@@ -978,7 +977,7 @@ func (instr *Instruction) doMIDDLE() {
 	case "indirect", "indirect+":
 		b := len(instr.RawOps) - 1
 		for i, varStr := range instr.VarStrings {
-			str := "R%02X"
+			str := "R_%02X"
 			val := int(instr.RawOps[b] & 0xFE)
 			str = regName(str, val)
 			if b == 0 {
@@ -1005,7 +1004,7 @@ func (instr *Instruction) doMIDDLE() {
 		b := len(instr.RawOps) - 1
 		for i, varStr := range instr.VarStrings {
 			vo := VarObjs[varStr]
-			str := "R%02X"
+			str := "R_%02X"
 			val := int(instr.RawOps[b])
 			str = regName(str, val)
 			instr.XRef(str, val)
@@ -1041,7 +1040,7 @@ func (instr *Instruction) doMIDDLE() {
 		for i, varStr := range instr.VarStrings {
 			vo := VarObjs[varStr]
 			val := int(instr.RawOps[b])
-			str := "R%02X"
+			str := "R_%02X"
 
 			if i+1 == instr.VarCount {
 

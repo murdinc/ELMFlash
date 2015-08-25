@@ -6,11 +6,32 @@ import (
 
 func regName(s string, v int) string {
 	if name, okk := RegObjs[v]; okk {
-		//return s + " ~(" + name.Description + ")"
+		// Return from the list below
 		return s + " ~(" + name.Description + ")"
+
+	} else if v >= 0x400 && v <= 0xFFF {
+		// Internal RAM
+		return s + " ~( Internal RAM - Code RAM )"
+
+	} else if v >= 0x00 && v <= 0x17 {
+		// Special Function Registers
+		return s + " ~( SFR - Special Function Registers )"
+
+	} else if v >= 0x18 && v <= 0x19 {
+		// Stack Pointer
+		return s + " ~( SP - Stack Pointer )"
+
+	} else if v >= 0x1A && v <= 0xFF {
+		// General Purpose Register RAM - lower register
+		return s + " ~( GP Reg RAM )"
+
+	} else if v >= 0x100 && v <= 0x3FFF {
+		// Special Function Registers - upper register
+		return s + " ~( GP Reg RAM )"
+
 	}
+
 	return s + " ~"
-	//return s
 }
 
 type Register struct {
@@ -20,14 +41,14 @@ type Register struct {
 }
 
 var RegObjs = map[int]Register{
-	0x1E74: {
-		Mnemonic:    "AD_COMMAND",
-		Description: "A/D Command",
-	},
-
 	0x1E72: {
 		Mnemonic:    "AD_RESULT",
 		Description: "A/D Result",
+	},
+
+	0x1E74: {
+		Mnemonic:    "AD_COMMAND",
+		Description: "A/D Command",
 	},
 
 	0x1E50: {
@@ -836,6 +857,11 @@ var RegObjs = map[int]Register{
 	},
 
 	0x0018: {
+		Mnemonic:    "SP",
+		Description: "Stack Pointer",
+	},
+
+	0x0019: {
 		Mnemonic:    "SP",
 		Description: "Stack Pointer",
 	},
