@@ -170,6 +170,227 @@ func (h *DisAsm) DisAsm(calName string) error {
 	log(fmt.Sprintf("Found [%d] Jumps", len(jumps)), nil)
 
 	// Print out the Assembly
+	for index, instr := range opcodes {
+
+		if subroutines[instr.Address] != nil {
+			callers := ""
+			for _, caller := range subroutines[instr.Address] {
+				callers = callers + fmt.Sprintf("  ============================================================= [CALLED FROM 0x%X - %s] \n", caller.CallFrom, caller.Mnemonic)
+			}
+			log(fmt.Sprintf("\n======== SUB_0x%X ==================================================================================\n%s", instr.Address, callers), nil)
+
+		}
+
+		if jumps[instr.Address] != nil {
+			jumpers := ""
+			for _, jumper := range jumps[instr.Address] {
+				jumpers = jumpers + fmt.Sprintf("  ============================================================= [JUMP FROM 0x%X - %s] \n", jumper.JumpFrom, jumper.Mnemonic)
+			}
+			log(fmt.Sprintf("\n======== JUMP_0x%X \n%s", instr.Address, jumpers), nil)
+
+		}
+
+		if instr.Ignore == false {
+
+			if instr.Mnemonic == "CMPB" || instr.Mnemonic == "CMP" {
+				switch opcodes[index+1].Mnemonic {
+
+				//case "JNST":
+				case "JNH":
+					instr.PseudoCode = strings.Replace(instr.PseudoCode, "==", "<=", 1)
+				case "JGT":
+					instr.PseudoCode = strings.Replace(instr.PseudoCode, "==", ">", 1)
+				//case "JNC":
+				//case "JNVT":
+				//case "JNV":
+				case "JGE":
+					instr.PseudoCode = strings.Replace(instr.PseudoCode, ">=", "!=", 1)
+				case "JNE":
+					instr.PseudoCode = strings.Replace(instr.PseudoCode, "==", "!=", 1)
+				//case "JST":
+				case "JH":
+					instr.PseudoCode = strings.Replace(instr.PseudoCode, "==", ">", 1)
+				case "JLE":
+					instr.PseudoCode = strings.Replace(instr.PseudoCode, "==", "<=", 1)
+				//case "JC":
+				//case "JVT":
+				//case "JV":
+				case "JLT":
+					instr.PseudoCode = strings.Replace(instr.PseudoCode, "==", "<", 1)
+
+				}
+
+			}
+
+			address := addSpaces(fmt.Sprintf("[0x%X]", instr.Address), 20)
+			//mnemonic := addSpaces(fmt.Sprintf("%s", instr.Mnemonic), 23)
+			shortDesc := addSpaces(fmt.Sprintf("%s %s", instr.Description, instr.Mnemonic), 45)
+			//shortDesc := addSpaces(fmt.Sprintf("%s", instr.Description), 40)
+
+			var l1 string
+
+			if !instr.Checked {
+				log("#### ERROR DISASEMBLING OPCODE ####", nil)
+			}
+
+			// Pseudo Code
+			l1 = addSpaces(l1, 15)
+			l1 += fmt.Sprintf("%s", instr.PseudoCode)
+
+			log(address+shortDesc+l1, nil)
+
+			if instr.Mnemonic == "RET" {
+				log("\n== RETURN FROM SUBROUTINE ===============================================================================", nil)
+			}
+		}
+
+	}
+
+	return nil
+}
+
+func (h *DisAsm) VDisAsm(calName string) error {
+
+	// Pull in the stuff before the calibration file
+	preCalFile := "./calibrations/" + calibrations["pre"]
+	log(fmt.Sprintf("Disassemble - Pre-calibration File: %s", preCalFile), nil)
+
+	p, err := os.Open(preCalFile)
+	pi, err := p.Stat()
+	preFileSize := pi.Size()
+
+	// Pull in the Calibration file
+	calFile := "./calibrations/" + calibrations[calName]
+	log(fmt.Sprintf("Disassemble - Calibration File: %s", calFile), nil)
+
+	f, err := os.Open(calFile)
+	fi, err := f.Stat()
+	fileSize := fi.Size()
+	if err != nil {
+		log("Disassemble - Error opening file", err)
+		return err
+	}
+
+	log(fmt.Sprintf("Disassemble - [%s] is %d bytes long", calibrations["pre"], preFileSize), nil)
+	log(fmt.Sprintf("Disassemble - [%s] is %d bytes long", calibrations[calName], fileSize), nil)
+
+	// Make some buffers
+	preBlock := make([]byte, 0x108000)
+	calBlock := make([]byte, 0x78000)
+
+	// Read in all the bytes
+	n, err := p.Read(preBlock)
+	if err != nil {
+		log("Disassemble - Error reading calibration", err)
+		return err
+	}
+	log(fmt.Sprintf("Disassemble - reading 0x%X bytes from pre-calibration file.", n), nil)
+
+	n, err = f.Read(calBlock)
+	if err != nil {
+		log("Disassemble - Error reading calibration", err)
+		return err
+	}
+
+	log(fmt.Sprintf("Disassemble - reading 0x%X bytes from calibration file.", n), nil)
+
+	block := append(preBlock, calBlock...)
+
+	// Doubletime
+	//block = append(block, block[0x100000:0x180000]...)
+
+	log(fmt.Sprintf("Length: 0x%X", len(block)), nil)
+
+	opSize := 1
+	count := 0
+
+	var opcodes []Instruction
+	subroutines := make(map[int][]Call)
+	xrefs := make(map[int][]XRef)
+	jumps := make(map[int][]Jump)
+
+	for i := 0x100000; i < len(block); i = i + opSize {
+		//for i := 0x000000; i < len(block); i = i + opSize {
+
+		// Registers and Ram
+		if i > 0x0 && i < 0xFFF {
+			continue
+		}
+
+		// Unknown
+		if i > 0x1BFF && i < 0x100000 {
+			continue
+		}
+
+		// Maps, it seems
+		if i > 0x108000 && i < 0x11FFFF {
+			continue
+		}
+
+		// More Maps?
+		/*
+			if i > 0x139D54 {
+				continue
+			}
+		*/
+
+		// Checksum
+		if i == 0x103FDE {
+			log(fmt.Sprintf("Checksum: [0x%X] Address: 0x%X", block[i:i+2], i), nil)
+			opSize = 2
+			continue
+		}
+
+		// Unknown, but def not opcode
+		if i >= 0x1074D4 && i <= 0x1076A3 {
+			opSize = 1
+			continue
+		}
+
+		// Copy block and the stuff around it
+		if i >= 0x107FFE && i <= 0x108103 {
+			opSize = 1
+			continue
+		}
+
+		// The Parser™
+		b := block[i : i+10]
+		instr, err := Parse(b, i)
+
+		// Ignore ops set to ignore in our ops list
+		if instr.Ignore == false && err == nil {
+			count++
+		}
+
+		// Append our instruction to our opcodes list
+		opcodes = append(opcodes, instr)
+
+		// Append our Call addresses to the subroutines list
+		for CallAdd, CallVal := range instr.Calls {
+			subroutines[CallAdd] = append(subroutines[CallAdd], CallVal...)
+		}
+
+		// Append our XRefs to our XRefs list
+		for XRefAdd, XRefVal := range instr.XRefs {
+			xrefs[XRefAdd] = append(xrefs[XRefAdd], XRefVal...)
+		}
+
+		// Append our Jumps to our Jumps list
+		for JumpAdd, JumpVal := range instr.Jumps {
+			jumps[JumpAdd] = append(jumps[JumpAdd], JumpVal...)
+		}
+
+		//}
+
+		opSize = instr.ByteLength
+
+	}
+	log(fmt.Sprintf("Found [%d] instructions", count), nil)
+	log(fmt.Sprintf("Found [%d] XRefs", len(xrefs)), nil)
+	log(fmt.Sprintf("Found [%d] Subroutines", len(subroutines)), nil)
+	log(fmt.Sprintf("Found [%d] Jumps", len(jumps)), nil)
+
+	// Print out the Assembly
 	for _, instr := range opcodes {
 
 		if subroutines[instr.Address] != nil {

@@ -73,9 +73,11 @@ func Parse(in []byte, address int) (Instruction, error) {
 
 			} else if (firstByte & 0xf8) == 0x30 {
 				instruction.doJBC()
+				instruction.doPseudo()
 
 			} else if (firstByte & 0xf8) == 0x38 {
 				instruction.doJBS()
+				instruction.doPseudo()
 
 			} else if (firstByte & 0xf0) == 0xd0 {
 				instruction.doCONDJMP()
@@ -292,25 +294,35 @@ func (instr *Instruction) Jump(s string, v int) {
 
 // Do Pseudo
 func (instr *Instruction) doPseudo() {
-	var v [2]string
+	var v [3]string
 
 	for _, varStr := range instr.VarStrings {
 
 		val := instr.Vars[varStr].Value
 		val = strings.Replace(val, "[R_00 ~(Zero Register)]", "", 1)
 		val = strings.Replace(val, "R_", "$r_", 1)
+		val = strings.Replace(val, "[$r_00]", "", 1)
+		val = strings.Replace(val, "$r_00", "0x00", 1)
+		val = strings.Replace(val, "$r_02", "0x11", 1)
 		val = strings.Replace(val, " ~(", " (", 1)
 		val = strings.Replace(val, " ~", "", 1)
+		val = strings.Replace(val, "$r_02 (Ones Register)", "0x11", 1)
+		val = strings.Replace(val, " (Ones Register)", "", 1)
 		val = strings.Replace(val, "#", "0x", 1)
+
+		val = strings.Replace(val, " ( GP Reg RAM )", "", 1)
 
 		switch instr.Vars[varStr].Type {
 		case "DEST":
 			val = strings.Replace(val, "0x000", "$r_", 1)
-			val = strings.Replace(val, "0x00", "$r_", 1)
 			val = strings.Replace(val, "0x", "$r_", 1)
 			v[0] = val
 		case "ADDR":
 			v[0] = val
+		case "PTRS":
+			v[0] = val
+		case "BYTEREG":
+			v[2] = val
 		default:
 			v[1] = val
 		}
@@ -318,11 +330,8 @@ func (instr *Instruction) doPseudo() {
 
 	switch instr.Mnemonic {
 
-	case "INC":
-		instr.PseudoCode = fmt.Sprintf("%s++", v[0])
-
 	case "CLR", "CLRB":
-		instr.PseudoCode = fmt.Sprintf("%s = 0", v[0])
+		instr.PseudoCode = fmt.Sprintf("%s = 0x00", v[0])
 
 	case "EXT":
 		instr.PseudoCode = fmt.Sprintf("SIGN EXTEND INT %s TO LONG INT", v[0])
@@ -330,7 +339,16 @@ func (instr *Instruction) doPseudo() {
 	case "EXTB":
 		instr.PseudoCode = fmt.Sprintf("SIGN EXTEND SHORT INT %s TO INT", v[0])
 
-	case "JNST", "JNH", "JGT", "JNC", "JNVT", "JNV", "JGE", "JNE", "JST", "JH", "JLE", "JC", "JVT", "JV", "JLT", "JE", "LJMP", "SJMP":
+	case "JNST", "JNH", "JGT", "JNC", "JNVT", "JNV", "JGE", "JNE", "JST", "JH", "JLE", "JC", "JVT", "JV", "JLT", "JE":
+		instr.PseudoCode = fmt.Sprintf("	JUMP TO: %s", v[0])
+
+	case "JBS":
+		instr.PseudoCode = fmt.Sprintf("if bitno: (%s) of %s is set { JUMP TO: %s }", v[1], v[2], v[0])
+
+	case "JBC":
+		instr.PseudoCode = fmt.Sprintf("if bitno: (%s) of %s is clear { JUMP TO: %s }", v[1], v[2], v[0])
+
+	case "LJMP", "SJMP", "EBR", "EJMP":
 		instr.PseudoCode = fmt.Sprintf("JUMP TO: %s", v[0])
 
 	case "ECALL", "CALL", "SCALL", "LCALL":
@@ -342,20 +360,59 @@ func (instr *Instruction) doPseudo() {
 	case "POP":
 		instr.PseudoCode = fmt.Sprintf("POP THE STACK TO %s", v[0])
 
-	case "CMPB", "CMP":
+	case "CMPB", "CMP", "CMPL":
 		instr.PseudoCode = fmt.Sprintf("if (%s == %s) {", v[0], v[1])
 
-	case "ANDB", "AND":
+	case "ANDB", "AND", "ADDB":
 		instr.PseudoCode = fmt.Sprintf("%s = %s & %s", v[0], v[0], v[1])
 
-	case "ORB", "OR":
-		instr.PseudoCode = fmt.Sprintf("%s = %s | %s", v[0], v[0], v[1])
+	case "ORB", "OR", "XOR", "XORB":
+		instr.PseudoCode = fmt.Sprintf("%s = %s %s %s", v[0], v[0], instr.Mnemonic, v[1])
 
-	case "ADD", "ADDC":
+	case "NOT", "NOTB", "NEG", "NEGB":
+		instr.PseudoCode = fmt.Sprintf("%s = %s %s %s", v[0], v[0], instr.Mnemonic, v[0])
+
+	case "ADD", "ADDC", "ADDCB":
 		instr.PseudoCode = fmt.Sprintf("%s = %s + %s", v[0], v[0], v[1])
 
-	default:
+	case "XCH", "XCHB":
+		instr.PseudoCode = fmt.Sprintf("%s <=%s=> %s", v[0], instr.Mnemonic, v[1])
+
+	case "SUB", "SUBC", "SUBCB", "SUBB":
+		instr.PseudoCode = fmt.Sprintf("%s = %s - %s", v[0], v[0], v[1])
+
+	case "MUL", "MULB", "MULU", "MULUB", "SGN MUL", "SGN MULB":
+		instr.PseudoCode = fmt.Sprintf("%s = %s * %s", v[0], v[0], v[1])
+
+	case "DIV", "DIVU", "DIVUB", "SGN DIVB", "SGN DIV":
+		instr.PseudoCode = fmt.Sprintf("%s = %s / %s", v[0], v[0], v[1])
+
+	case "SHR", "SHRL", "SHRAL", "SHRB":
+		instr.PseudoCode = fmt.Sprintf("%s >> %s", v[0], v[1])
+
+	case "SHL", "SHLL", "SHLB", "SHRA":
+		instr.PseudoCode = fmt.Sprintf("%s << %s", v[0], v[1])
+
+	case "DEC", "DECB":
+		instr.PseudoCode = fmt.Sprintf("%s--", v[0])
+
+	case "INC", "INCB":
+		instr.PseudoCode = fmt.Sprintf("%s++", v[0])
+
+	case "LD", "LDB", "ELD", "ELDB", "STB", "ESTB", "ST", "EST", "LDBZE", "LDBSE":
 		instr.PseudoCode = fmt.Sprintf("%s = %s", v[0], v[1])
+
+	case "NORML": // TODO
+		instr.PseudoCode = fmt.Sprintf("NORMALIZE %s (todo)", v[0])
+
+	case "BMOV", "BMOVI":
+		instr.PseudoCode = fmt.Sprintf("BMOV %s count(%s) (todo)", v[0], v[1])
+
+	case "DJNZ", "DJNZW":
+		instr.PseudoCode = fmt.Sprintf("if (%s - 1 != 0) { JUMP TO: %s }", v[1], v[0])
+
+	default:
+		instr.PseudoCode = fmt.Sprintf("########### %s = %s", v[0], v[1])
 	}
 }
 
@@ -368,7 +425,6 @@ func getOffset(data []byte) int32 {
 func (instr *Instruction) doSJMP() {
 	vars := map[string]Variable{}
 
-	//offset := int(instr.Op&3)<<8 | int(instr.RawOps[0])
 	offset := int(getOffset([]byte{instr.Op & 3, instr.RawOps[0]}))
 
 	if instr.Op&4 == 4 {
@@ -391,7 +447,6 @@ func (instr *Instruction) doSJMP() {
 func (instr *Instruction) doSCALL() {
 	vars := map[string]Variable{}
 
-	//offset := int(instr.Op&3)<<8 | int(instr.RawOps[0])
 	offset := int(getOffset([]byte{instr.Op & 3, instr.RawOps[0]}))
 
 	if instr.Op&4 == 4 {
@@ -455,7 +510,13 @@ func (instr *Instruction) doJBS() {
 	offset := int(instr.RawOps[1])
 
 	breg := VarObjs["breg"]
-	breg.Value = fmt.Sprintf("R%X", instr.RawOps[0])
+
+	val := int(instr.RawOps[0])
+	str := "R_%X"
+	str = regName(str, val)
+	instr.XRef(str, val)
+
+	breg.Value = fmt.Sprintf(str, val)
 	breg.Type = instr.VarTypes[0]
 	vars["breg"] = breg
 
@@ -465,7 +526,14 @@ func (instr *Instruction) doJBS() {
 	vars["bitno"] = bitno
 
 	cadd := VarObjs["cadd"]
-	cadd.Value = fmt.Sprintf("0x%X", instr.Address+instr.ByteLength+offset)
+
+	val = int(instr.Address + instr.ByteLength + offset)
+	str = "0x%X"
+	str = regName(str, val)
+	instr.XRef(str, val)
+	instr.Jump(str, val)
+
+	cadd.Value = fmt.Sprintf(str, val)
 	cadd.Type = instr.VarTypes[2]
 	vars["cadd"] = cadd
 
@@ -579,7 +647,7 @@ func (instr *Instruction) doE0() {
 		case "extended-indirect":
 
 			val := int(instr.RawOps[0])
-			str := "[R%02X"
+			str := "[R_%02X"
 			str = regName(str, val)
 			instr.XRef(str, val)
 
@@ -588,7 +656,7 @@ func (instr *Instruction) doE0() {
 			treg.Type = instr.VarTypes[1]
 
 			val = int(instr.RawOps[1])
-			str = "R%02X"
+			str = "R_%02X"
 			str = regName(str, val)
 			instr.XRef(str, val)
 
@@ -634,7 +702,7 @@ func (instr *Instruction) doE0() {
 		}
 
 		vo := VarObjs[instr.VarStrings[0]]
-		str := "[R%02X]"
+		str := "[R_%02X]"
 		str = regName(str, val)
 		instr.XRef(str, val)
 
@@ -727,12 +795,14 @@ func (instr *Instruction) doC0() {
 				str := "R_%02X"
 				val := int(instr.RawOps[b] & 0xFE)
 				if b == 0 {
-					str = "[R%02X]"
+					str = "[R_%02X]"
 					if instr.AutoIncrement == true {
 						str = str + "+"
 						val = val & 0xFE
 					}
 				}
+
+				str = regName(str, val)
 
 				vo := VarObjs[varStr]
 				vo.Value = fmt.Sprintf(str, val)
@@ -761,9 +831,10 @@ func (instr *Instruction) doC0() {
 					instr.XRef(offStr, offset)
 
 					val = int(instr.RawOps[b-1] & 0xFE)
-					str = "[R%02X"
+					str = "[R_%02X"
 
 					str = fmt.Sprintf(offStr+str+"]", offset, val)
+					str = regName(str, val)
 					vo.Value = str
 				} else {
 					vo.Value = fmt.Sprintf(str, val)
@@ -792,7 +863,7 @@ func (instr *Instruction) doC0() {
 					instr.XRef(offStr, offset)
 
 					val := int(instr.RawOps[b-2] & 0xFE)
-					str := "[R%02X"
+					str := "[R_%02X"
 					str = regName(str, val)
 					instr.XRef(str, val)
 
@@ -834,7 +905,7 @@ func (instr *Instruction) do00() {
 			instr.XRef(offStr, offset)
 
 			val := int(instr.RawOps[0])
-			str := "[R%02X"
+			str := "[R_%02X"
 			str = regName(str, val)
 			instr.XRef(str, val)
 
@@ -843,7 +914,7 @@ func (instr *Instruction) do00() {
 			treg.Type = instr.VarTypes[1]
 
 			val = int(instr.RawOps[4])
-			str = "R%02X"
+			str = "R_%02X"
 			str = regName(str, val)
 			instr.XRef(str, val)
 
@@ -859,7 +930,7 @@ func (instr *Instruction) do00() {
 		case "extended-indirect":
 
 			val := int(instr.RawOps[0])
-			str := "[R%02X"
+			str := "[R_%02X"
 			str = regName(str, val)
 			instr.XRef(str, val)
 
@@ -868,7 +939,7 @@ func (instr *Instruction) do00() {
 			treg.Type = instr.VarTypes[1]
 
 			val = int(instr.RawOps[1])
-			str = "R%02X"
+			str = "R_%02X"
 			str = regName(str, val)
 			instr.XRef(str, val)
 
@@ -981,7 +1052,7 @@ func (instr *Instruction) doMIDDLE() {
 			val := int(instr.RawOps[b] & 0xFE)
 			str = regName(str, val)
 			if b == 0 {
-				str = "[R%02X"
+				str = "[R_%02X"
 				if instr.AutoIncrement == true {
 					str = str + "+"
 					val = val & 0xFE
@@ -1017,7 +1088,7 @@ func (instr *Instruction) doMIDDLE() {
 				instr.XRef(offStr, offset)
 
 				val := int(instr.RawOps[b-1] & 0xFE)
-				str := "[R%02X"
+				str := "[R_%02X"
 				str = regName(str, val)
 				instr.XRef(str, val)
 
@@ -1050,7 +1121,7 @@ func (instr *Instruction) doMIDDLE() {
 				instr.XRef(offStr, offset)
 
 				val := int(instr.RawOps[b-2] & 0xFE)
-				str := "[R%02X"
+				str := "[R_%02X"
 				str = regName(str, val)
 				instr.XRef(str, val)
 

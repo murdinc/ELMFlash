@@ -14,8 +14,9 @@ import (
 	"os"
 	//"strings"
 	//"time"
-	"github.com/murdinc/cli"
 	"regexp"
+
+	"github.com/murdinc/cli"
 )
 
 // App constants
@@ -56,11 +57,11 @@ func (h *HexStuff) TestM2(calName string) error {
 
 	f, err := os.Open(calFile)
 	fi, err := f.Stat()
-	fileSize := fi.Size()
 	if err != nil {
 		log("TestM2 - Error opening file", err)
 		return err
 	}
+	fileSize := fi.Size()
 
 	log(fmt.Sprintf("TestM2 - [%s] is %d bytes long", calibrations["pre"], preFileSize), nil)
 	log(fmt.Sprintf("TestM2 - [%s] is %d bytes long", calibrations[calName], fileSize), nil)

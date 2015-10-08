@@ -5,6 +5,10 @@ import (
 )
 
 func regName(s string, v int) string {
+	if v == 0x00 {
+		return s
+	}
+
 	if name, okk := RegObjs[v]; okk {
 		// Return from the list below
 		return s + " ~(" + name.Description + ")"

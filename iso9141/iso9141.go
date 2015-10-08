@@ -18,7 +18,7 @@ import (
 // App constants
 ////////////////..........
 const baud = 115200
-const debug = false
+const debug = true
 const obdDevice = "STY3M"
 const EOL = 0x3E
 const testerAddr = 0xF5
@@ -148,7 +148,7 @@ func (d *Device) DownloadBIN(outfile string) error {
 	log("Starting Download...", nil)
 	bar := pb.StartNew(480)
 
-	for i := 0xFF0000; i < 0xFFFFFF; i = i + 0x0400 {
+	for i := 0x108000; i < 0x017FFFF; i = i + 0x0400 {
 		bar.Increment()
 		addr := i
 

@@ -1,12 +1,13 @@
 package main
 
 import (
+	"fmt"
+	"os"
+
 	"./disasm"
 	"./hexstuff"
 	"./iso9141"
-	"fmt"
 	"github.com/murdinc/cli"
-	"os"
 )
 
 // Main Function
@@ -122,8 +123,25 @@ func main() {
 				d.DisAsm(c.NamedArg("calibration"))
 			},
 		},
+		{
+			Name:        "vDisasm",
+			ShortName:   "v",
+			Example:     "vDisasm",
+			Description: "Disassemble Calibration File - Verbose",
+			Arguments: []cli.Argument{
+				cli.Argument{Name: "calibration", Usage: "vDisasm msp", Description: "The name of the calibration to disassemble", Optional: false},
+			},
+			Action: func(c *cli.Context) {
+				d := disasm.New()
+				d.VDisAsm(c.NamedArg("calibration"))
+			},
+		},
 	}
 
+	log("ELMFlash - v1.0", nil)
+	log("Created by Ahmad A.", nil)
+	log("© MVRD INDUSTRIES 2015", nil)
+	log("Not for commercial use", nil)
 	app.Run(os.Args)
 }
 
