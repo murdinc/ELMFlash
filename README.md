@@ -7,7 +7,7 @@ Much of this was built by sniffing the packets being sent by the OEM supplied EC
 
 Currently, I am trying to make sense of the disassembly and make that output more verbose. I am using a desk rig for testing that includes an electronic engine simulator (JimStim), and a modified ECU with cold-swappable Flash chips. 
 
-Current capabilities: 
+**Current capabilities:** 
 * Enters Security Mode
 * Download the entire memory address block
 * Upload a new calibration (currently broken, but probably just an issue with the recently adjusted offset)
@@ -18,7 +18,7 @@ Current capabilities:
 * Names variables and address spaces documented in the datasheets.
 * Identifies patterns of hex that represent Map/Table data. 
 
-Up Next: 
+**Up Next:**
 * Find the proper start address and build a sofware simulator to run through the code. 
 * Run a bus pirate on the service port of the ECU / Identify results from the logic analyzer.
 * Trace pins on PCB from the MCU ports to spark and fuel wires.
