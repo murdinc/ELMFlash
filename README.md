@@ -23,7 +23,7 @@ Currently, I am trying to make sense of the disassembly and make that output mor
 * Run a bus pirate on the service port of the ECU / Identify results from the logic analyzer.
 * Trace circuit on PCB from the MCU ports to spark and fuel wires.
 * Modify and upload a custom calibration. 
-* Stop using local import paths? Maybe break it out into seperate libraties?  
+* Stop using local import paths? Maybe break it out into seperate libraries?  
 
 **CLI Menu:**
 ![screenshot1](screenshot1.png)
