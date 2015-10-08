@@ -1,9 +1,5 @@
 package disasm
 
-import (
-//"errors"
-)
-
 func regName(s string, v int) string {
 	if v == 0x00 {
 		return s

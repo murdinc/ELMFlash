@@ -1,19 +1,8 @@
 package hexstuff
 
 import (
-	//"bufio"
-	//"encoding/hex"
-	//"encoding/binary"
-	//"errors"
 	"fmt"
-	//"github.com/cheggaaa/pb"
-	//serial "github.com/huin/goserial"
-	//"io"
-	//	"io/ioutil"
-	//"math/rand"
 	"os"
-	//"strings"
-	//"time"
 	"regexp"
 
 	"github.com/murdinc/cli"
