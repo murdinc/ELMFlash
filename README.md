@@ -21,5 +21,12 @@ Currently, I am trying to make sense of the disassembly and make that output mor
 **Up Next:**
 * Find the proper start address and build a sofware simulator to run through the code. 
 * Run a bus pirate on the service port of the ECU / Identify results from the logic analyzer.
-* Trace pins on PCB from the MCU ports to spark and fuel wires.
+* Trace circuit on PCB from the MCU ports to spark and fuel wires.
 * Modify and upload a custom calibration. 
+
+**CLI Menu:**
+![screenshot1](screenshot1.png)
+
+
+**Disassembly Output:**
+![screenshot2](screenshot2.png)
