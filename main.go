@@ -25,7 +25,7 @@ func main() {
 			Example:     "download",
 			Description: "Download the calibration from the ECU",
 			Action: func(c *cli.Context) {
-				obd := iso9141.New()
+				obd := iso9141.New(false)
 				obd.DownloadBIN("DOWNLOAD")
 			},
 		},
@@ -35,7 +35,7 @@ func main() {
 			Example:     "dump",
 			Description: "Dump the calibration from the ECU without security mode (slow)",
 			Action: func(c *cli.Context) {
-				obd := iso9141.New()
+				obd := iso9141.New(false)
 				obd.DumpBIN("DUMP")
 			},
 		},
@@ -47,8 +47,12 @@ func main() {
 			Arguments: []cli.Argument{
 				cli.Argument{Name: "calibration", Usage: "upload msp", Description: "The name of the calibration to upload", Optional: false},
 			},
+			Flags: []cli.Flag{
+				cli.BoolFlag{Name: "test", Usage: "Test upload"},
+			},
 			Action: func(c *cli.Context) {
-				obd := iso9141.New()
+
+				obd := iso9141.New(c.Bool("test"))
 				obd.UploadBIN(c.NamedArg("calibration"))
 			},
 		},
@@ -58,7 +62,7 @@ func main() {
 			Example:     "common",
 			Description: "Crawls all Common ID's",
 			Action: func(c *cli.Context) {
-				obd := iso9141.New()
+				obd := iso9141.New(false)
 				obd.CommonIdDump("COMMON_ID")
 			},
 		},
@@ -68,7 +72,7 @@ func main() {
 			Example:     "local",
 			Description: "Crawls all Local ID's",
 			Action: func(c *cli.Context) {
-				obd := iso9141.New()
+				obd := iso9141.New(false)
 				obd.LocalIdDump("LOCAL_ID")
 			},
 		},
@@ -78,7 +82,7 @@ func main() {
 			Example:     "ecuId",
 			Description: "Retrieve the ECU ID",
 			Action: func(c *cli.Context) {
-				obd := iso9141.New()
+				obd := iso9141.New(false)
 				obd.EcuId()
 			},
 		},

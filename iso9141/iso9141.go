@@ -5,20 +5,21 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/cheggaaa/pb"
-	serial "github.com/huin/goserial"
 	"io"
 	"io/ioutil"
 	"math/rand"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/cheggaaa/pb"
+	serial "github.com/huin/goserial"
 )
 
 // App constants
 ////////////////..........
 const baud = 115200
-const debug = true
+const debug = false
 const obdDevice = "STY3M"
 const EOL = 0x3E
 const testerAddr = 0xF5
@@ -99,6 +100,7 @@ type Device struct {
 	baud         int
 	lastHeader   []byte
 	SecurityMode bool
+	Dummy        bool
 }
 
 // Device Functions
@@ -265,16 +267,24 @@ func (d *Device) UploadBIN(calName string) error {
 	count := 0
 	log("Starting Upload...", nil)
 	bar := pb.StartNew(480)
-	for i := 0x007C00; count < 480; i = i - 0x0400 {
-		writeOffset := 0x10FC00
+	writeOffset := 0x10FC00
+	for i := 0x007C00; count < 480; i -= 0x0400 {
+		//writeOffset := 0x10FC00
 		if count != 0 && count%32 == 0 {
-			i = i + 0x10000
+			i += 0x10000
+			writeOffset += 0x10000
+			dbg("Requesting modulo 32", nil)
 		}
-		if count >= 96 {
-			writeOffset = writeOffset + 0x80000
+
+		if count == 96 {
+			writeOffset += 0x80000
+			dbg("Requesting count number 96", nil)
 		}
+
 		count++
 		bar.Increment()
+
+		dbg(fmt.Sprintf("Requesting count %d", count), nil)
 
 		// Seek to new offset
 		readAddr64 := int64(i)
@@ -289,8 +299,8 @@ func (d *Device) UploadBIN(calName string) error {
 		dbg(fmt.Sprintf("UploadBIN - reading %d bytes from offset: 0x%X", n, readOffset), nil)
 
 		// Get the destination addresses
-		writeAddr := writeOffset + int(readOffset)
-		dbg(fmt.Sprintf("UploadBIN - writing %d bytes to offset 0x%X", n, writeAddr), nil)
+		//writeAddr := writeOffset + int(readOffset)
+		dbg(fmt.Sprintf("UploadBIN - writing %d bytes to offset 0x%X", n, writeOffset), nil)
 
 		// Append the Checksum
 		crc := uint16(0x0000)
@@ -305,10 +315,12 @@ func (d *Device) UploadBIN(calName string) error {
 		blockChk := append(block, chkh, chkl)
 
 		// Upload the Calibration
-		err = d.UploadBlock(writeAddr, 1024, blockChk)
+		err = d.UploadBlock(writeOffset, 1024, blockChk)
 		if err != nil {
 			return err
 		}
+
+		writeOffset -= 0x0400
 	}
 
 	bar.FinishPrint("Upload Finished!")
@@ -472,9 +484,14 @@ func (d *Device) UploadBlock(start, length int, block []byte) error {
 		return err
 	}
 
-	// Set the timeout low
-	resp := d.Send(Packet{Message: []byte("AT ST 01")})
-	dbg(fmt.Sprintf("Timeout low: %X", resp.Message), nil)
+	resp := Packet{}
+
+	if d.Dummy != true {
+		// Set the timeout low
+		resp = d.Send(Packet{Message: []byte("AT ST 01")})
+		dbg(fmt.Sprintf("Timeout low: %X", resp.Message), nil)
+
+	}
 
 	// Send the block
 	for i := 0; i < length; i++ {
@@ -485,13 +502,21 @@ func (d *Device) UploadBlock(start, length int, block []byte) error {
 			}
 
 			uploadBlock := append([]byte{0x36}, block[i:end]...)
-			_, err = d.Msg(uploadBlock)
+			if d.Dummy != true {
+				_, err = d.Msg(uploadBlock)
+			} else {
+				dbg(fmt.Sprintf("%X", uploadBlock), nil)
+			}
 		}
 	}
 
-	// Set the timeout high
-	resp = d.Send(Packet{Message: []byte("AT ST 00")})
-	dbg(fmt.Sprintf("Timeout default: %X", resp.Message), nil)
+	if d.Dummy != true {
+
+		// Set the timeout high
+		resp = d.Send(Packet{Message: []byte("AT ST 00")})
+		dbg(fmt.Sprintf("Timeout default: %X", resp.Message), nil)
+
+	}
 
 	// Request Download/Upload Transfer Exit
 	exitCommand := []byte{0x37, 0x82}
@@ -510,6 +535,13 @@ func (d *Device) UploadBlock(start, length int, block []byte) error {
 }
 
 func (d *Device) RunRoutine(start, stop, success []byte) error {
+
+	if d.Dummy == true {
+		dbg(fmt.Sprintf("%X", start), nil)
+		dbg(fmt.Sprintf("%X", stop), nil)
+		return nil
+	}
+
 	// Make sure we have Security Access
 	if d.SecurityMode == false {
 		err := d.EnableSecurity()
@@ -555,6 +587,10 @@ func (d *Device) RunRoutine(start, stop, success []byte) error {
 }
 
 func (d *Device) EnableSecurity() error {
+
+	if d.Dummy == true {
+		return nil
+	}
 
 	// Pick a random security key, because why not?
 	rand.Seed(time.Now().UTC().UnixNano())
@@ -661,7 +697,14 @@ func (d Device) Receive() Packet {
 	return resp
 }
 
-func New() *Device {
+func New(test bool) *Device {
+
+	if test {
+		device := new(Device)
+		device.Dummy = true
+		return device
+	}
+
 	device := new(Device)
 	device.FindDevice()
 	device.ConnectDevice()
@@ -683,6 +726,12 @@ func (d Device) Cmd(cmd string) (string, error) {
 }
 
 func (d *Device) Msg(msg []byte) (Packet, error) {
+
+	if d.Dummy == true {
+		dbg(fmt.Sprintf("%X", msg), nil)
+		return Packet{}, nil
+	}
+
 	str := toString(msg)
 	msg = []byte(str)
 	message := Packet{Message: msg}
@@ -871,7 +920,7 @@ func contains(n byte, h []byte) bool {
 func dbg(kind string, err error) {
 	if debug {
 		if err == nil {
-			fmt.Printf("### [DEBUG LOG - %s]\n\n", kind)
+			fmt.Printf("[ %s ]\n", kind)
 		} else {
 			fmt.Printf("### [DEBUG ERROR - %s]: %s\n\n", kind, err)
 		}
