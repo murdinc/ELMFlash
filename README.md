@@ -10,7 +10,7 @@ Currently, I am trying to make sense of the disassembly and make that output mor
 **Current capabilities:** 
 * Enters Security Mode
 * Download the entire memory address block
-* Upload a new calibration (currently broken, but probably just an issue with the recently adjusted offset)
+* Upload a new calibration
 * Returns the ID of the calibration
 * Scan all Common ID's and Local ID's 
 * Disassemble BIN calibrations
