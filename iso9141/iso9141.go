@@ -211,7 +211,7 @@ func (d Device) DumpBIN(outfile string) error {
 				log("DumpBIN - Error writing to file", err)
 				return err
 			}
-			log(fmt.Sprintf("DumpBIN - Recieved: %X - wrote %d bytes to offset 0x%.2X", contents, n, writeOffset), nil)
+			log(fmt.Sprintf("DumpBIN - Received: %X - wrote %d bytes to offset 0x%.2X", contents, n, writeOffset), nil)
 		}
 
 		f.Sync()

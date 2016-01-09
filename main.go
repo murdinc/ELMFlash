@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"./disasm"
-	"./hexstuff"
-	"./iso9141"
+	"github.com/murdinc/ELMFlash/disasm"
+	"github.com/murdinc/ELMFlash/hexstuff"
+	"github.com/murdinc/ELMFlash/iso9141"
+	"github.com/murdinc/ELMFlash/j3"
 	"github.com/murdinc/cli"
 )
 
@@ -19,6 +20,18 @@ func main() {
 	app.Usage = "Command Line Interface for programming the 3rd Generation Mazda Protege"
 	app.Version = "1.0"
 	app.Commands = []cli.Command{
+		{
+			Name:        "j3",
+			ShortName:   "j3",
+			Example:     "j3",
+			Description: "J3 Firmata Test",
+			Action: func(c *cli.Context) {
+				//connection := j3.New()
+				//connection.Run()
+				j3.Test()
+
+			},
+		},
 		{
 			Name:        "download",
 			ShortName:   "d",
