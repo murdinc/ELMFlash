@@ -10,7 +10,7 @@ Currently, I am trying to make sense of the disassembly and make that output mor
 **Current capabilities:** 
 * Enters Security Mode
 * Download the entire memory address block
-* Upload a new calibration (currently broken, but probably just an issue with the recently adjusted offset)
+* Upload a new calibration
 * Returns the ID of the calibration
 * Scan all Common ID's and Local ID's 
 * Disassemble BIN calibrations
@@ -23,7 +23,7 @@ Currently, I am trying to make sense of the disassembly and make that output mor
 * Run a bus pirate on the service port of the ECU / Identify results from the logic analyzer.
 * Trace circuit on PCB from the MCU ports to spark and fuel wires.
 * Modify and upload a custom calibration. 
-* Stop using local import paths? Maybe break it out into seperate libraties?  
+* Stop using local import paths? Maybe break it out into seperate libraries?  
 
 **CLI Menu:**
 ![screenshot1](screenshot1.png)
