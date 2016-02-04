@@ -142,6 +142,20 @@ type Instruction struct {
 	Checked         bool
 }
 
+type Instructions []Instruction
+
+func (inst Instructions) Len() int {
+	return len(inst)
+}
+
+func (inst Instructions) Less(i, j int) bool {
+	return inst[i].Address < inst[j].Address
+}
+
+func (inst Instructions) Swap(i, j int) {
+	inst[i], inst[j] = inst[j], inst[i]
+}
+
 var VarObjs = map[string]Variable{
 	"aa": {
 		Description: "A 2-bit field within an opcode that selects the basic addressing mode used. This field is present only in those opcodes that allow addressing mode options. ",
@@ -350,7 +364,7 @@ func (instr *Instruction) doPseudo() {
 		instr.PseudoCode = fmt.Sprintf("JUMP TO: %s", v[0])
 
 	case "ECALL", "CALL", "SCALL", "LCALL":
-		instr.PseudoCode = fmt.Sprintf("CALL SUB_%s", v[0])
+		instr.PseudoCode = fmt.Sprintf("CALL SUB_ %s", v[0])
 
 	case "PUSH":
 		instr.PseudoCode = fmt.Sprintf("PUSH %s ONTO THE STACK", v[1])
@@ -416,18 +430,20 @@ func (instr *Instruction) doPseudo() {
 
 // Get Offset
 func getOffset(data []byte) int32 {
-	return int32(uint32(data[0]) + uint32(data[1])<<8)
+	return int32(data[0]) << 8 & int32(data[1])
 }
 
 // SJMP
 func (instr *Instruction) doSJMP() {
 	vars := map[string]Variable{}
 
-	offset := int(getOffset([]byte{instr.Op & 3, instr.RawOps[0]}))
+	offset := int(getOffset([]byte{instr.Op & 4, instr.RawOps[0]}))
 
-	if instr.Op&4 == 4 {
-		offset |= 0xFC00
-	}
+	/*
+		if instr.Op&4 == 4 {
+			offset |= 0xFC00
+		}
+	*/
 	str := "0x%X"
 	val := int(instr.Address + instr.ByteLength + offset)
 	instr.Jump(str, val)
@@ -445,11 +461,13 @@ func (instr *Instruction) doSJMP() {
 func (instr *Instruction) doSCALL() {
 	vars := map[string]Variable{}
 
-	offset := int(getOffset([]byte{instr.Op & 3, instr.RawOps[0]}))
+	offset := int(getOffset([]byte{instr.Op & 4, instr.RawOps[0]}))
 
-	if instr.Op&4 == 4 {
-		offset |= 0xFC00
-	}
+	/*
+		if instr.Op&4 == 4 {
+			offset |= 0xFC00
+		}
+	*/
 
 	cadd := VarObjs["cadd"]
 
@@ -561,10 +579,13 @@ func (instr *Instruction) doCONDJMP() {
 // Fx OpCodes
 func (instr *Instruction) doF0() {
 	vars := map[string]Variable{}
-	offset := int(instr.RawOps[2]<<16 | instr.RawOps[1]<<8 | instr.RawOps[0])
 
+	offset := int(int32(instr.RawOps[0]) | int32(instr.RawOps[1])<<8 | int32(instr.RawOps[2])<<16)
+
+	val := instr.Address + instr.ByteLength + offset
+	val = val & 0x1FFFFF
 	str := "0x%X"
-	val := int(instr.Address + instr.ByteLength + offset)
+
 	instr.XRef(str, val)
 	if instr.Mnemonic == "ECALL" {
 		instr.Call(str, val)
@@ -669,9 +690,11 @@ func (instr *Instruction) doE0() {
 
 	case 0xE6:
 		// EJMP
-		offset := int(uint32(instr.RawOps[0]) | uint32(instr.RawOps[1])<<8 | uint32(instr.RawOps[2])<<16)
+		offset := int(int32(instr.RawOps[0]) | int32(instr.RawOps[1])<<8 | int32(instr.RawOps[2])<<16)
 
 		val := instr.Address + instr.ByteLength + offset
+		val = val & 0x1FFFFF
+
 		str := "0x%X"
 		str = regName(str, val)
 		instr.Jump(str, val)

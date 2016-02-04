@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/tarm/serial"
 )
@@ -56,15 +57,21 @@ func Test() {
 
 	// Set the pin mode
 	// 010xxxxx - Configure pins as input(1) or output(0)
-	// AUX|MOSI|CLK|MISO|CS
+	// X|X|AUX|MOSI|CLK|MISO|CS
 	// 0|1|0|A|O|C|I|C - abbreviations
 	// 0|1|0|0|O|O|I|I - direction
-	// 0|1|0|0|0|0|1|1 - set in this call (0x43)
-	resp := j3.Send(Packet{Message: []byte{0x43}})
+	// 0|1|0|0|0|0|1|1 - set in this call (0x43) sets the pin i/o modes
+	// 1|1|0|0|0|0|1|1 - set in this call (0xC0) turns on power
+	resp := j3.Send(Packet{Message: []byte{0x43, 0xC0}})
 	if (resp.Message[0]|byte(0x40) != 0x40) && resp.Message[0] != 0x42 { // TODO: reset from: BBIO1BBIO
 		log("Error setting pin directions!", nil)
 		fmt.Printf("MESSAGE: %s", resp.Message)
 		//os.Exit(1)
+	}
+
+	// init sequence?
+	for i := 0; i < 6; i++ {
+		j3.SendCommand(0x7F)
 	}
 
 	// Shift in SDU command 06H to select the code RAM address access instruction
@@ -91,6 +98,13 @@ func Test() {
 	// Shift in SDU command 28H to put the SDU into an idle state. This shift causes the low byte of data1 to be shifted out on CROUT.
 	j3.SendCommand(0x28)
 
+	j3.WaitBusy()
+
+	j3.WaitBusy()
+
+	// Power Off
+	j3.Send(Packet{Message: []byte{0x80}})
+
 	/*
 		for {
 			// Running at 31.446 Hz?
@@ -110,37 +124,124 @@ func Test() {
 // 1|POWER|PULLUP|AUX|MOSI|CLK|MISO|CS
 // 1|0|0|0|O|C|I|B - abbreviations
 // 1|0|0|0|O|O|I|I - direction
-// 1|0|0|0|*|0|0|0 - set in this function
+// 1|1|0|0|*|0|0|0 - set in this function
 func (j *J3Port) SendCommand(command byte) {
 	clock := false
 	for i := 8; i > 0; i-- {
 		if clock == false {
+			// Clock Low, Read Bus
 			clock = true
 			i++
-			j.Send(Packet{Message: []byte{0x80}})
+			//resp := j.Send(Packet{Message: []byte{0xC0}})
+			resp := j.Send(Packet{Message: []byte{0xE0}})
+
+			out := (resp.Message[0] >> 3) & 0x01
+			clock := (resp.Message[0] >> 2) & 0x01
+			in := (resp.Message[0] >> 1) & 0x01
+			busy := resp.Message[0] & 0x01
+
+			info := ""
+			if clock != 0 {
+				info = "CLOCK SYNC FAILURE!"
+			}
+
+			dbg(fmt.Sprintf("CLOCK L	%d	[ OUT: %d	IN: %d	BUSY: %d ]	%s \n*********\n\n", clock, out, in, busy, info), nil)
+
+			if busy == 0 {
+				log(fmt.Sprintf("BUSY SendCommand i = %d", i-1), nil)
+				i++
+			}
 
 		} else {
+			// Clock High, write to Bus
 			clock = false
 			bitno := uint(i) - 1
 			bit := (command >> bitno) & 0x01
 
-			// clock + = 0x88
-			// clock - = 0x80
-
-			bb := ((bit << 3) | 0x84)
-			//fmt.Printf("bit: 0x%.2X\n", bit)
-			//fmt.Printf("bb: 0x%.2X\n\n", bb)
+			bb := ((bit << 3) | 0xE4)
 
 			resp := j.Send(Packet{Message: []byte{bb}})
 
-			fmt.Printf("\nSent: %X\n", bb)
-			fmt.Printf("Received: %X\n", resp.Message)
+			out := (resp.Message[0] >> 3) & 0x01
+			clock := (resp.Message[0] >> 2) & 0x01
+			in := (resp.Message[0] >> 1) & 0x01
+			busy := resp.Message[0] & 0x01
 
-			if resp.Message[0] != bb {
-				fmt.Println("DIFFERENCE")
+			info := ""
+			if clock != 1 {
+				info = "CLOCK SYNC FAILURE!"
+			}
+
+			dbg(fmt.Sprintf("CLOCK H	%d	[ OUT: %d	IN: %d	BUSY: %d ] %s \n", clock, out, in, busy, info), nil)
+
+			if busy == 0 {
+				log(fmt.Sprintf("BUSY SendCommand i = %d", i-1), nil)
+				i++
 			}
 
 		}
+
+		time.Sleep(time.Millisecond * 10)
+
+	}
+
+	j.WaitBusy()
+
+}
+
+func (j *J3Port) WaitBusy() {
+	clock := false
+	for i := 8; i > 0; i-- {
+		if clock == false {
+			// Clock Low, Read Bus
+			clock = true
+			i++
+			//resp := j.Send(Packet{Message: []byte{0xC0}})
+			resp := j.Send(Packet{Message: []byte{0xE0}})
+
+			out := (resp.Message[0] >> 3) & 0x01
+			clock := (resp.Message[0] >> 2) & 0x01
+			in := (resp.Message[0] >> 1) & 0x01
+			busy := resp.Message[0] & 0x01
+
+			info := ""
+			if clock != 0 {
+				info = "CLOCK SYNC FAILURE!"
+			}
+
+			if busy == 0 {
+				log(fmt.Sprintf("BUSY WaitBusy i = %d", i), nil)
+				i++
+			} else {
+				dbg(fmt.Sprintf("CLOCK L	%d	[ OUT: %d	IN: %d	BUSY: %d ]	%s \n*********\n\n", clock, out, in, busy, info), nil)
+			}
+		} else {
+			// Clock High, write to Bus
+			clock = false
+
+			//resp := j.Send(Packet{Message: []byte{0xC4}})
+			resp := j.Send(Packet{Message: []byte{0xE4}})
+
+			out := (resp.Message[0] >> 3) & 0x01
+			clock := (resp.Message[0] >> 2) & 0x01
+			in := (resp.Message[0] >> 1) & 0x01
+			busy := resp.Message[0] & 0x01
+
+			info := ""
+			if clock != 1 {
+				info = "CLOCK SYNC FAILURE!"
+			}
+
+			if busy == 0 {
+				log(fmt.Sprintf("BUSY WaitBusy i = %d", i), nil)
+				i++
+			} else {
+				dbg(fmt.Sprintf("CLOCK H	%d	[ OUT: %d	IN: %d	BUSY: %d ] %s \n", clock, out, in, busy, info), nil)
+			}
+
+		}
+
+		time.Sleep(time.Millisecond * 10)
 
 	}
 

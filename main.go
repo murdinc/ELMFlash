@@ -136,21 +136,8 @@ func main() {
 				cli.Argument{Name: "calibration", Usage: "disasm msp", Description: "The name of the calibration to disassemble", Optional: false},
 			},
 			Action: func(c *cli.Context) {
-				d := disasm.New()
-				d.DisAsm(c.NamedArg("calibration"))
-			},
-		},
-		{
-			Name:        "vDisasm",
-			ShortName:   "v",
-			Example:     "vDisasm",
-			Description: "Disassemble Calibration File - Verbose",
-			Arguments: []cli.Argument{
-				cli.Argument{Name: "calibration", Usage: "vDisasm msp", Description: "The name of the calibration to disassemble", Optional: false},
-			},
-			Action: func(c *cli.Context) {
-				d := disasm.New()
-				d.VDisAsm(c.NamedArg("calibration"))
+				d := disasm.New(c.NamedArg("calibration"))
+				d.DisAsm()
 			},
 		},
 	}

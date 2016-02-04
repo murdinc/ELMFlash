@@ -1,0 +1,447 @@
+/*
+
+for i := 0x172080; i < len(h.block); i = i + opSize {
+	// The Parser™
+	b := h.block[i : i+10]
+	instr, err := Parse(b, i)
+	opSize = instr.ByteLength
+
+	// Ignore ops set to ignore in our ops list
+	//if instr.Ignore == false && err == nil {
+	//	count++
+	//}
+
+	// Append our instruction to our opcodes list
+	opcodes = append(opcodes, instr)
+
+	// Append our XRefs to our XRefs list
+	for XRefAdd, XRefVal := range instr.XRefs {
+		xrefs[XRefAdd] = append(xrefs[XRefAdd], XRefVal...)
+	}
+
+	// Append our Call addresses to the subroutines list
+	for CallAdd, CallVal := range instr.Calls {
+		subroutines[CallAdd] = append(subroutines[CallAdd], CallVal...)
+	}
+
+	// Append our Jumps to our Jumps list
+	for JumpAdd, JumpVal := range instr.Jumps {
+		jumps[JumpAdd] = append(jumps[JumpAdd], JumpVal...)
+
+		// If this is not a conditional jump, point the program counter at the address
+		switch instr.Mnemonic {
+		case "SJMP", "EJMP", "LJMP", "TIJMP":
+			//log(instr.Mnemonic, nil)
+			i = JumpAdd
+			opSize = 0
+			jumps[JumpAdd][0].Crawled = true
+
+		}
+
+		//log(fmt.Sprintf("Found Jump Add: 0x%X	I: 0x%X", JumpAdd, i), nil)
+	}
+}
+
+*/
+
+
+func (h *DisAsm) DisAsm() error {
+
+	// Doubletime
+	//block = append(block, block[0x100000:0x180000]...)
+
+	log(fmt.Sprintf("Length: 0x%X", len(h.block)), nil)
+
+	opSize := 1
+	count := 0
+
+	var opcodes []Instruction
+	subroutines := make(map[int][]Call)
+	xrefs := make(map[int][]XRef)
+	jumps := make(map[int][]Jump)
+
+	for i := 0x100000; i < len(h.block); i = i + opSize {
+		//for i := 0x000000; i < len(block); i = i + opSize {
+
+		// Registers and Ram
+		if i > 0x0 && i < 0xFFF {
+			continue
+		}
+
+		// Unknown
+		if i > 0x1BFF && i < 0x100000 {
+			continue
+		}
+
+		// Maps, it seems
+		if i > 0x108000 && i < 0x11FFFF {
+			continue
+		}
+
+		// More Maps?
+		/*
+			if i > 0x139D54 {
+				continue
+			}
+		*/
+
+		// Checksum
+		if i == 0x103FDE {
+			log(fmt.Sprintf("Checksum: [0x%X] Address: 0x%X", h.block[i:i+2], i), nil)
+			opSize = 2
+			continue
+		}
+
+		// Unknown, but def not opcode
+		if i >= 0x1074D4 && i <= 0x1076A3 {
+			opSize = 1
+			continue
+		}
+
+		// Copy block and the stuff around it
+		if i >= 0x107FFE && i <= 0x108103 {
+			opSize = 1
+			continue
+		}
+
+		// The Parser™
+		b := h.block[i : i+10]
+		instr, err := Parse(b, i)
+
+		// Ignore ops set to ignore in our ops list
+		if instr.Ignore == false && err == nil {
+			count++
+		}
+
+		// Append our instruction to our opcodes list
+		opcodes = append(opcodes, instr)
+
+		// Append our Call addresses to the subroutines list
+		for CallAdd, CallVal := range instr.Calls {
+			subroutines[CallAdd] = append(subroutines[CallAdd], CallVal...)
+		}
+
+		// Append our XRefs to our XRefs list
+		for XRefAdd, XRefVal := range instr.XRefs {
+			xrefs[XRefAdd] = append(xrefs[XRefAdd], XRefVal...)
+		}
+
+		// Append our Jumps to our Jumps list
+		for JumpAdd, JumpVal := range instr.Jumps {
+			jumps[JumpAdd] = append(jumps[JumpAdd], JumpVal...)
+		}
+
+		//}
+
+		opSize = instr.ByteLength
+
+	}
+	log(fmt.Sprintf("Found [%d] instructions", count), nil)
+	log(fmt.Sprintf("Found [%d] XRefs", len(xrefs)), nil)
+	log(fmt.Sprintf("Found [%d] Subroutines", len(subroutines)), nil)
+	log(fmt.Sprintf("Found [%d] Jumps", len(jumps)), nil)
+
+	// Print out the Assembly
+	for index, instr := range opcodes {
+
+		if subroutines[instr.Address] != nil {
+			callers := ""
+			for _, caller := range subroutines[instr.Address] {
+				callers = callers + fmt.Sprintf("  ============================================================= [CALLED FROM 0x%X - %s] \n", caller.CallFrom, caller.Mnemonic)
+			}
+			log(fmt.Sprintf("\n======== SUB_0x%X ==================================================================================\n%s", instr.Address, callers), nil)
+
+		}
+
+		if jumps[instr.Address] != nil {
+			jumpers := ""
+			for _, jumper := range jumps[instr.Address] {
+				jumpers = jumpers + fmt.Sprintf("  ============================================================= [JUMP FROM 0x%X - %s] \n", jumper.JumpFrom, jumper.Mnemonic)
+			}
+			log(fmt.Sprintf("\n======== JUMP_0x%X \n%s", instr.Address, jumpers), nil)
+
+		}
+
+		if instr.Ignore == false {
+
+			if instr.Mnemonic == "CMPB" || instr.Mnemonic == "CMP" {
+				switch opcodes[index+1].Mnemonic {
+
+				//case "JNST":
+				case "JNH":
+					instr.PseudoCode = strings.Replace(instr.PseudoCode, "==", "<=", 1)
+				case "JGT":
+					instr.PseudoCode = strings.Replace(instr.PseudoCode, "==", ">", 1)
+				//case "JNC":
+				//case "JNVT":
+				//case "JNV":
+				case "JGE":
+					instr.PseudoCode = strings.Replace(instr.PseudoCode, ">=", "!=", 1)
+				case "JNE":
+					instr.PseudoCode = strings.Replace(instr.PseudoCode, "==", "!=", 1)
+				//case "JST":
+				case "JH":
+					instr.PseudoCode = strings.Replace(instr.PseudoCode, "==", ">", 1)
+				case "JLE":
+					instr.PseudoCode = strings.Replace(instr.PseudoCode, "==", "<=", 1)
+				//case "JC":
+				//case "JVT":
+				//case "JV":
+				case "JLT":
+					instr.PseudoCode = strings.Replace(instr.PseudoCode, "==", "<", 1)
+
+				}
+
+			}
+
+			address := addSpaces(fmt.Sprintf("[0x%X]", instr.Address), 20)
+			//mnemonic := addSpaces(fmt.Sprintf("%s", instr.Mnemonic), 23)
+			shortDesc := addSpaces(fmt.Sprintf("%s %s", instr.Description, instr.Mnemonic), 45)
+			//shortDesc := addSpaces(fmt.Sprintf("%s", instr.Description), 40)
+
+			var l1 string
+
+			if !instr.Checked {
+				log("#### ERROR DISASEMBLING OPCODE ####", nil)
+			}
+
+			// Pseudo Code
+			l1 = addSpaces(l1, 15)
+			l1 += fmt.Sprintf("%s", instr.PseudoCode)
+
+			log(address+shortDesc+l1, nil)
+
+			if instr.Mnemonic == "RET" {
+				log("\n== RETURN FROM SUBROUTINE ===============================================================================", nil)
+			}
+		}
+
+	}
+
+	return nil
+}
+
+func (h *DisAsm) VDisAsm() error {
+
+	// Doubletime
+	//block = append(block, block[0x100000:0x180000]...)
+
+	log(fmt.Sprintf("Length: 0x%X", len(h.block)), nil)
+
+	opSize := 1
+	count := 0
+
+	var opcodes []Instruction
+	subroutines := make(map[int][]Call)
+	xrefs := make(map[int][]XRef)
+	jumps := make(map[int][]Jump)
+
+	for i := 0x100000; i < len(h.block); i = i + opSize {
+		//for i := 0x000000; i < len(block); i = i + opSize {
+
+		// Registers and Ram
+		if i > 0x0 && i < 0xFFF {
+			continue
+		}
+
+		// Unknown
+		if i > 0x1BFF && i < 0x100000 {
+			continue
+		}
+
+		// Maps, it seems
+		if i > 0x108000 && i < 0x11FFFF {
+			continue
+		}
+
+		// More Maps?
+		/*
+			if i > 0x139D54 {
+				continue
+			}
+		*/
+
+		// Checksum
+		if i == 0x103FDE {
+			log(fmt.Sprintf("Checksum: [0x%X] Address: 0x%X", h.block[i:i+2], i), nil)
+			opSize = 2
+			continue
+		}
+
+		// Unknown, but def not opcode
+		if i >= 0x1074D4 && i <= 0x1076A3 {
+			opSize = 1
+			continue
+		}
+
+		// Copy block and the stuff around it
+		if i >= 0x107FFE && i <= 0x108103 {
+			opSize = 1
+			continue
+		}
+
+		// The Parser™
+		b := h.block[i : i+10]
+		instr, err := Parse(b, i)
+
+		// Ignore ops set to ignore in our ops list
+		if instr.Ignore == false && err == nil {
+			count++
+		}
+
+		// Append our instruction to our opcodes list
+		opcodes = append(opcodes, instr)
+
+		// Append our Call addresses to the subroutines list
+		for CallAdd, CallVal := range instr.Calls {
+			subroutines[CallAdd] = append(subroutines[CallAdd], CallVal...)
+		}
+
+		// Append our XRefs to our XRefs list
+		for XRefAdd, XRefVal := range instr.XRefs {
+			xrefs[XRefAdd] = append(xrefs[XRefAdd], XRefVal...)
+		}
+
+		// Append our Jumps to our Jumps list
+		for JumpAdd, JumpVal := range instr.Jumps {
+			jumps[JumpAdd] = append(jumps[JumpAdd], JumpVal...)
+		}
+
+		//}
+
+		opSize = instr.ByteLength
+
+	}
+	log(fmt.Sprintf("Found [%d] instructions", count), nil)
+	log(fmt.Sprintf("Found [%d] XRefs", len(xrefs)), nil)
+	log(fmt.Sprintf("Found [%d] Subroutines", len(subroutines)), nil)
+	log(fmt.Sprintf("Found [%d] Jumps", len(jumps)), nil)
+
+	// Print out the Assembly
+	for _, instr := range opcodes {
+
+		if subroutines[instr.Address] != nil {
+			log("\n==================================================================================================================================================================", nil)
+			callers := ""
+			for _, caller := range subroutines[instr.Address] {
+				callers = callers + fmt.Sprintf("[CALLED FROM 0x%X - %s] ", caller.CallFrom, caller.Mnemonic)
+			}
+			log(fmt.Sprintf("SUB_0x%X %s", instr.Address, callers), nil)
+
+		}
+
+		if jumps[instr.Address] != nil {
+			log("\n==================================================================================================================================================================", nil)
+			jumpers := ""
+			for _, jumper := range jumps[instr.Address] {
+				jumpers = jumpers + fmt.Sprintf("[JUMP FROM 0x%X - %s] ", jumper.JumpFrom, jumper.Mnemonic)
+			}
+			log(fmt.Sprintf("JUMP_0x%X %s", instr.Address, jumpers), nil)
+
+		}
+
+		if instr.Ignore == false {
+
+			address := addSpaces(fmt.Sprintf("Address: [0x%X]", instr.Address), 20)
+			length := addSpaces(fmt.Sprintf(" Length: [%d]", instr.ByteLength), 14)
+			mode := addSpaces(fmt.Sprintf(" Mode: [%s]", instr.AddressingMode), 26)
+			mnemonic := addSpaces(fmt.Sprintf(" Mnemonic: [%s]", instr.Mnemonic), 23)
+			shortDesc := addSpaces(fmt.Sprintf("%s", instr.Description), 10)
+			operandCount := addSpaces(fmt.Sprintf(" [%d] Operands", instr.VarCount), 23)
+			raw := addSpaces(fmt.Sprintf(" Raw: 0x%.10X", instr.Raw), 20)
+
+			count++
+			log("---------", nil)
+
+			var l1, l2, l3 string
+
+			l1 += addSpaces("", 10)
+			l2 += addSpaces("", 10)
+			l3 += addSpaces(instr.Mnemonic, 10)
+
+			if !instr.Checked {
+				log("#### ERROR DISASEMBLING OPCODE ####", nil)
+			}
+
+			for _, varStr := range instr.VarStrings {
+				l1 += addSpaces(fmt.Sprintf("%s", instr.Vars[varStr].Type), 25)
+				l2 += addSpaces(fmt.Sprintf("%s", varStr), 25)
+				l3 += addSpaces(fmt.Sprintf("%s", instr.Vars[varStr].Value), 25)
+			}
+
+			// Pseudo Code
+			l3 = addSpaces(l3, 150)
+			l3 += fmt.Sprintf("%s", instr.PseudoCode)
+
+			log(address+mnemonic+length+operandCount+mode+raw+"\n", nil)
+			log(shortDesc, nil)
+
+			if instr.VarCount > 0 {
+				log(addSpacesL(l1, 15), nil)
+				log(addSpacesL(l2, 15), nil)
+			}
+			log(addSpacesL(l3, 15), nil)
+
+			if instr.Mnemonic == "RET" {
+				log("\n== RETURN FROM SUBROUTINE ========================================================================================================================================", nil)
+			}
+		}
+
+	}
+
+	// Sort and print the list of address references collected
+	log("\n== ADDRESS REFERENCES ========================================================================================================================================", nil)
+	var keys []int
+	for k := range xrefs {
+		keys = append(keys, k)
+	}
+	sort.Ints(keys)
+
+	for _, k := range keys {
+
+		log(fmt.Sprintf("0x%X", k), nil)
+
+		for _, ref := range xrefs[k] {
+			log(fmt.Sprintf("       [%s] XREF  [%s] AT 0x%X", ref.String, ref.Mnemonic, ref.XRefFrom), nil)
+		}
+	}
+
+	// Print the list of subroutines
+	log("\n== SUBROUTINE REFERENCES ========================================================================================================================================", nil)
+	var sKeys []int
+	for s := range subroutines {
+		sKeys = append(sKeys, s)
+	}
+
+	sort.Ints(sKeys)
+
+	for _, s := range sKeys {
+
+		log(fmt.Sprintf("SUB_0x%X", s), nil)
+
+		for _, sub := range subroutines[s] {
+			log(fmt.Sprintf("       [%s] AT 0x%X", sub.Mnemonic, sub.CallFrom), nil)
+		}
+	}
+
+	// Print the list of jumps
+	log("\n== JUMP REFERENCES ========================================================================================================================================", nil)
+	var jKeys []int
+	for j := range jumps {
+		jKeys = append(jKeys, j)
+	}
+
+	sort.Ints(jKeys)
+
+	for _, j := range jKeys {
+
+		log(fmt.Sprintf("JUMP_0x%X", j), nil)
+
+		for _, sub := range jumps[j] {
+			log(fmt.Sprintf("       [%s] AT 0x%X", sub.Mnemonic, sub.JumpFrom), nil)
+		}
+	}
+
+	return nil
+
+}
