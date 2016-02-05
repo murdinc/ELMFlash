@@ -5200,6 +5200,22 @@ var unsignedInstructions = map[byte]Instruction{
 }
 
 var signedInstructions = map[byte]Instruction{
+	0x1C: Instruction{
+		Mnemonic:        "MYSTERY",
+		ByteLength:      4,
+		VarCount:        3,
+		VarTypes:        []string{"DEST", "SRC1", "SRC2"},
+		VarStrings:      []string{"lreg", "wreg", "waop"},
+		AddressingMode:  "indirect",
+		Description:     "MYSTERY.",
+		LongDescription: "MYSTERY",
+		VariableLength:  false,
+		AutoIncrement:   false,
+		Flags:           Flags{},
+		Ignore:          false,
+		Signed:          false,
+		Reserved:        false,
+	},
 	0x4C: Instruction{
 		Mnemonic:        "MUL",
 		ByteLength:      4,
