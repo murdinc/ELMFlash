@@ -96,7 +96,7 @@ func (h *DisAsm) DisAsm() error {
 	errors := 0
 
 	// Program Counter - Start Address: 0x172080
-	// BIG TODO sort this?
+	// BIG TODO figure out which of these we actually need..
 	pcs := []int{
 		0x1068AF,
 		0x106683,
