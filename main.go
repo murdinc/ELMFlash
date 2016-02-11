@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/murdinc/ELMFlash/compare"
 	"github.com/murdinc/ELMFlash/disasm"
 	"github.com/murdinc/ELMFlash/hexstuff"
 	"github.com/murdinc/ELMFlash/iso9141"
@@ -125,6 +126,23 @@ func main() {
 			Action: func(c *cli.Context) {
 				hs := hexstuff.New()
 				hs.TestM2(c.NamedArg("calibration"))
+			},
+		},
+		{
+			Name:        "compare",
+			ShortName:   "cmp",
+			Example:     "compare mp3 mp3-2",
+			Description: "Compare",
+			Arguments: []cli.Argument{
+				cli.Argument{Name: "pre1", Usage: "compare pre mp3 pre2 mp3x2", Description: "The name of the first pre calibrations to compare", Optional: false},
+				cli.Argument{Name: "calibration1", Usage: "compare pre mp3 pre2 mp3x2", Description: "The name of the first calibrations to compare", Optional: false},
+				cli.Argument{Name: "pre2", Usage: "compare pre mp3 pre2 mp3x2", Description: "The name of the second pre calibrations to compare", Optional: false},
+				cli.Argument{Name: "calibration2", Usage: "compare pre mp3 pre2 mp3x2", Description: "The name of the second calibrations to compare", Optional: false},
+			},
+
+			Action: func(c *cli.Context) {
+				cmp := compare.New(c.NamedArg("pre1"), c.NamedArg("calibration1"), c.NamedArg("pre2"), c.NamedArg("calibration2"))
+				cmp.Compare()
 			},
 		},
 		{

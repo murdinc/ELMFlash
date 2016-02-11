@@ -458,11 +458,6 @@ func getOffset(data []byte) int {
 
 	offset := int((int16(b1) << 8) | int16(b2))
 
-	//fmt.Printf("B1: 		0x%X 		%.8b \n", b1, b1)
-	//fmt.Printf("B2: 		0x%X 		%.16b \n\n", b2, b2)
-
-	//fmt.Printf("OFFSET1:	0x%X 		%.b 		%d \n", offset, offset, offset)
-
 	return offset
 }
 
@@ -498,9 +493,9 @@ func (instr *Instruction) doSCALL() {
 	str := "0x%X"
 	val := (instr.Address + instr.ByteLength) + offset
 
-	if val > 0x180000 {
-		val = val & 0xFFFFF
-	}
+	//if val > 0x180000 {
+	//	val = val & 0xFFFFF
+	//}
 
 	instr.Call(str, val)
 
@@ -608,18 +603,11 @@ func (instr *Instruction) doCONDJMP() {
 func (instr *Instruction) doF0() {
 	vars := map[string]Variable{}
 
-	//offset := int(int32(instr.RawOps[0]) | int32(instr.RawOps[1])<<8 | int32(instr.RawOps[2])<<16)
+	b1 := instr.RawOps[0]
+	b2 := instr.RawOps[1]
+	b3 := instr.RawOps[2]
 
-	b1 := byte(instr.RawOps[0])
-	b2 := byte(instr.RawOps[1])
-	b3 := byte(instr.RawOps[2])
-	b4 := byte(0x00)
-
-	if b3&0x80 == 0x80 {
-		b4 = 0xFF
-	}
-
-	offset := int(int32(b4)<<24 | int32(b3)<<16 | int32(b2)<<8 | int32(b1))
+	offset := int(b3)<<16 | int(b2)<<8 | int(b1)
 
 	val := instr.Address + instr.ByteLength + offset
 	val = val & 0x1FFFFF
@@ -677,8 +665,11 @@ func (instr *Instruction) doE0() {
 
 		case "extended-indexed":
 
-			offset := int(instr.RawOps[3])<<16 | int(instr.RawOps[2])<<8
-			offset = int(offset | int(instr.RawOps[1]))
+			b1 := instr.RawOps[1]
+			b2 := instr.RawOps[2]
+			b3 := instr.RawOps[3]
+
+			offset := int(b3)<<16 | int(b2)<<8 | int(b1)
 
 			offStr := "0x%06X"
 			offStr = regName(offStr, offset)
@@ -734,18 +725,12 @@ func (instr *Instruction) doE0() {
 
 	case 0xE6:
 		// EJMP
-		//offset := int(int16(instr.RawOps[0]) | int16(instr.RawOps[1])<<8 | int16(instr.RawOps[2])<<16)
 
-		b1 := byte(instr.RawOps[0])
-		b2 := byte(instr.RawOps[1])
-		b3 := byte(instr.RawOps[2])
-		b4 := byte(0x00)
+		b1 := instr.RawOps[0]
+		b2 := instr.RawOps[1]
+		b3 := instr.RawOps[2]
 
-		if b3&0x80 == 0x80 {
-			b4 = 0xFF
-		}
-
-		offset := int(int32(b4)<<24 | int32(b3)<<16 | int32(b2)<<8 | int32(b1))
+		offset := int(b3)<<16 | int(b2)<<8 | int(b1)
 
 		val := instr.Address + instr.ByteLength + offset
 		val = val & 0x1FFFFF
@@ -753,7 +738,6 @@ func (instr *Instruction) doE0() {
 		str := "0x%X"
 		str = regName(str, val)
 		instr.Jump(str, val)
-		//instr.XRef(str, val)
 
 		cadd := VarObjs["cadd"]
 		cadd.Value = fmt.Sprintf(str, val)
@@ -792,8 +776,8 @@ func (instr *Instruction) doE0() {
 	case 0xE7, 0xEF:
 		// LJMP, LCALL
 
-		b1 := byte(instr.RawOps[0])
-		b2 := byte(instr.RawOps[1])
+		b1 := instr.RawOps[0]
+		b2 := instr.RawOps[1]
 
 		offset := int(b2)<<8 | int(b1)
 
@@ -970,9 +954,14 @@ func (instr *Instruction) do00() {
 		switch instr.AddressingMode {
 
 		case "extended-indexed":
+			// ETSB
 
-			offset := int(instr.RawOps[3])<<16 | int(instr.RawOps[2])<<8
-			offset = offset | int(instr.RawOps[1])
+			b1 := byte(instr.RawOps[1])
+			b2 := byte(instr.RawOps[2])
+			b3 := byte(instr.RawOps[3])
+
+			offset := int(b3)<<16 | int(b2)<<8 | int(b1)
+
 			offStr := "0x%06X"
 			offStr = regName(offStr, offset)
 			instr.XRef(offStr, offset)

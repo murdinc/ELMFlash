@@ -12,20 +12,19 @@ import (
 const debug = false
 
 type DisAsm struct {
-	location string
-	block    []byte
+	block []byte
 }
 
 var calibrations = map[string]string{
-	"msp": "MSP.BIN",
-	"mp3": "MP3.BIN",
-	"p5":  "P5.BIN",
-	"pre": "PRE.BIN",
+	"msp":   "MSP.BIN",
+	"mp3":   "MP3.BIN",
+	"mp3x2": "MP3x2.BIN",
+	"p5":    "P5.BIN",
+	"pre":   "PRE2.BIN",
 }
 
 func New(calName string) *DisAsm {
 	controller := new(DisAsm)
-	controller.location = "MSP.BIN"
 
 	// Pull in the stuff before the calibration file
 	preCalFile := "./calibrations/" + calibrations["pre"]
@@ -51,8 +50,8 @@ func New(calName string) *DisAsm {
 	log(fmt.Sprintf("Disassemble - [%s] is %d bytes long", calibrations[calName], fileSize), nil)
 
 	// Make some buffers
-	preBlock := make([]byte, 0x108000)
-	calBlock := make([]byte, 0x78000)
+	preBlock := make([]byte, preFileSize)
+	calBlock := make([]byte, fileSize)
 
 	// Read in all the bytes
 	n, err := p.Read(preBlock)
@@ -69,8 +68,6 @@ func New(calName string) *DisAsm {
 	}
 
 	log(fmt.Sprintf("Disassemble - reading 0x%X bytes from calibration file.", n), nil)
-
-	//block := append(preBlock, calBlock...)
 
 	block := append(preBlock, calBlock...)
 
@@ -97,7 +94,11 @@ func (h *DisAsm) DisAsm() error {
 
 	// Program Counter - Start Address: 0x172080
 	pcs := []int{0x172080}
+	//pcs := []int{0x1F2080}
+	//pcs := []int{0x13E600}
+	//pcs := []int{0x171000, 0x172080}
 	//pcs := []int{0x13EA50, 0x172080}
+	//pcs := []int{0x100000, 0x172080}
 
 	for p := 0; p < len(pcs); p++ {
 		pc := pcs[p]
@@ -108,15 +109,15 @@ func (h *DisAsm) DisAsm() error {
 		for {
 
 			//if len(opcodes) > 80000 {
-			//break Loop
+			//	break Loop
 			//}
 
-			if pc < 0x100000 {
-				other[pc] = true
-				crawled[pc] = 3
-				pc = 0xFFFFFF
-				continue Loop
-			}
+			//if pc < 0x100000 {
+			//	other[pc] = true
+			//	crawled[pc] = 3
+			//	pc = 0xFFFFFF
+			//	continue Loop
+			//}
 
 			// Sub and Jumps, or break if out of range
 			if pc+10 > len(h.block) {
@@ -274,7 +275,7 @@ func (h *DisAsm) DisAsm() error {
 					shortDesc += " "
 				}
 				chkAdr++
-				if chkAdr >= 0x180000 {
+				if chkAdr >= len(h.block) {
 					break
 				} else if crawled[chkAdr] != 1 && xrefs[chkAdr] == nil {
 					shortDesc += fmt.Sprintf("%.2X ", h.block[chkAdr])
@@ -367,7 +368,7 @@ func (h *DisAsm) DisAsm() error {
 		chkAdr := instr.Address + instr.ByteLength
 	Check:
 		for {
-			if chkAdr >= 0x180000 {
+			if chkAdr >= len(h.block) {
 				break Check
 			} else if xrefs[chkAdr] != nil {
 				referers := ""
@@ -389,7 +390,7 @@ func (h *DisAsm) DisAsm() error {
 						shortDesc += " "
 					}
 					chkAdr++
-					if chkAdr >= 0x180000 {
+					if chkAdr >= len(h.block) {
 						break
 					} else if crawled[chkAdr] != 1 && xrefs[chkAdr] == nil {
 						shortDesc += fmt.Sprintf("%.2X ", h.block[chkAdr])
