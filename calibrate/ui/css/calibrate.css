@@ -1,0 +1,22 @@
+.wrapper {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+}
+
+.left {
+  flex: 0 0 40%;
+}
+
+.right {
+  flex: 1 0 60%;
+  margin-left: 10px;
+}
+
+.title {
+  flex: 0 0 20%;
+}
+
+.meta {
+  flex: 1 0 2%;
+}

@@ -1,5 +1,11 @@
 package disasm
 
+type Register struct {
+	Mnemonic        string
+	Description     string
+	LongDescription string
+}
+
 func regName(s string, v int) string {
 	if v == 0x00 {
 		return s
@@ -32,12 +38,6 @@ func regName(s string, v int) string {
 	}
 
 	return s + " ~"
-}
-
-type Register struct {
-	Mnemonic        string
-	Description     string
-	LongDescription string
 }
 
 var RegObjs = map[int]Register{

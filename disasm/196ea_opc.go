@@ -764,6 +764,7 @@ func (instr *Instruction) doE0() {
 		vo := VarObjs[instr.VarStrings[0]]
 		str := "[R_%02X]"
 		str = regName(str, val)
+		instr.Jump(str, val)
 		instr.XRef(str, val)
 
 		vo.Value = fmt.Sprintf(str, val)

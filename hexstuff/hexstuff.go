@@ -5,7 +5,7 @@ import (
 	"os"
 	"regexp"
 
-	"github.com/murdinc/cli"
+	"github.com/murdinc/legacy-cli"
 )
 
 // App constants
@@ -14,13 +14,11 @@ const debug = false
 
 func New() *HexStuff {
 	controller := new(HexStuff)
-	controller.location = "MSP.BIN"
 	return controller
 }
 
 // Connection represents an OBD-II serial connection
 type HexStuff struct {
-	location string
 }
 
 var calibrations = map[string]string{
@@ -236,7 +234,8 @@ Loop:
 			end := start + size
 			previous = end
 
-			match := fmt.Sprintf("TABLE MATCH: %X   ADDRESS: 0x%X  END: 0x%X  SIZE: %d x %d     [%d]    M1: %d      M2: %d      L1: 0x%X	L2: 0x%X", block[index:index+8], index, end, width, height, size, m1, m2, block[index+6], block[index+7])
+			match := fmt.Sprintf("TABLE MATCH: %X   ADDRESS: 0x%X  END: 0x%X  SIZE: %d x %d     [%d]    M1: %d      M2: %d      L1: 0x%X	L2: 0x%X	|	START #%X | ROWS: %d x COLS: %d", block[index:index+8], index, end, width, height, size, m1, m2, block[index+6], block[index+7], start, height, width)
+
 			log(match, nil)
 
 			//log(fmt.Sprintf("%X", block[index:end]), nil)
@@ -313,7 +312,9 @@ func (h *HexStuff) TestM1(calName string) error {
 	log(fmt.Sprintf("Length: 0x%X", len(block)), nil)
 
 	//regex := string([]byte{0x00, 0x04, 0x00, 0x02})
-	regex := string(0x00) + "[" + string(0x01) + "-" + string(0x04) + "]" + string(0x00) + "[" + string(0x02) + "-" + string(0x09) + "]"
+	//regex := string(0x00) + "[" + string(0x01) + "-" + string(0x04) + "]" + string(0x00) + "[" + string(0x02) + "-" + string(0x09) + "]"
+	regex := string(0x00) + "[" + string(0x00) + "-" + string(0x05) + "]" + string(0x00) + "[" + string(0x00) + "-" + string(0x0F) + "]"
+
 	re := regexp.MustCompile(regex)
 	matches := re.FindAllIndex(block, -1)
 
@@ -323,17 +324,183 @@ func (h *HexStuff) TestM1(calName string) error {
 
 	previous := 0x0000
 
+	var addresses []int
+
 	for _, i := range matches {
-		if i[0]%2 == 0 && i[0] >= previous && i[0] > 0x108000 && i[0] < 0x118000 {
-			index := i[0]
 
-			if block[index+6] == 0x08 || block[index+6] == 0x09 || block[index+6] == 0x07 || block[index+6] == 0x06 || block[index+6] == 0x10 {
+		index := i[0]
 
-				height := int(block[index+4]) + 1
-				width := int(block[index+5]) + 1
+		fmt.Println(fmt.Sprintf("MATCH: 0x%X", i[0]))
 
-				m1 := block[index+1]
-				m2 := block[index+3]
+		height := int(block[index+4]) + 1
+		width := int(block[index+5]) + 1
+
+		if index%2 == 0 && index >= previous && index > 0x108000 && index < 0x118000 && height > 1 {
+
+			//if block[index+6] == 0x08 || block[index+6] == 0x09 || block[index+6] == 0x07 || block[index+6] == 0x06 || block[index+6] == 0x10 {
+
+			h2 := block[index+1] + 1
+			h4 := block[index+3] + 1
+
+			count++
+
+			size := width * height
+			start := index + 8
+			end := start + size
+			previous = end - 1
+
+			sixteen := (int(block[index+7]) << 8) | int(block[index+6])
+
+			match := fmt.Sprintf(" MATCH: -1 0x%X 0 0x%X +1 0x%X  ADDRESS: 0x%X  END: 0x%X  SIZE: %d x %d		[%d]	H2: %d      H4: %d      L: 0x%X	L: %d	|	START #%X | ROWS: %d x COLS: %d", block[index-8:index], block[index:index+8], block[index+8:index+16], index, end, width, height, size, h2, h4, block[index+6:index+8], sixteen, start, height, width)
+			log(match, nil)
+
+			//log(fmt.Sprintf("%X", block[index:end]), nil)
+
+			//fmt.Println("\n")
+
+			//printTable16(width, height, block[start:end])
+			//printTable(width, height, block[start:end])
+
+			sizeName := fmt.Sprintf("%d	x	%d", width, height)
+			var sizeCount int
+			if sizes[sizeName] < 1 {
+				sizeCount = 1
+			} else {
+				sizeCount = sizes[sizeName]
+				sizeCount++
+			}
+			sizes[sizeName] = sizeCount
+
+			addresses = append(addresses, index)
+
+			//}
+		}
+	}
+
+	log(fmt.Sprintf("COUNT: %d ", count), nil)
+
+	fmt.Println("")
+
+	for size, count := range sizes {
+		log(fmt.Sprintf("SIZE: %s		COUNT: %d", size, count), nil)
+	}
+
+	fmt.Println("")
+
+	for _, address := range addresses {
+		fmt.Printf("0x%X, ", address)
+	}
+
+	fmt.Println("")
+	//fmt.Println(matches)
+	fmt.Println("")
+
+	return nil
+
+}
+
+func (h *HexStuff) TestM3(calName string) ([]int, error) {
+
+	// Pull in the stuff before the calibration file
+	preCalFile := "./calibrations/" + calibrations["pre"]
+	log(fmt.Sprintf("TestM1 - Pre-calibration File: %s", preCalFile), nil)
+
+	p, err := os.Open(preCalFile)
+	pi, err := p.Stat()
+	preFileSize := pi.Size()
+
+	// Pull in the Calibration file
+	calFile := "./calibrations/" + calibrations[calName]
+	log(fmt.Sprintf("TestM1 - Calibration File: %s", calFile), nil)
+
+	f, err := os.Open(calFile)
+	fi, err := f.Stat()
+	fileSize := fi.Size()
+	if err != nil {
+		log("TestM1 - Error opening file", err)
+		return nil, err
+	}
+
+	log(fmt.Sprintf("TestM1 - [%s] is %d bytes long", calibrations["pre"], preFileSize), nil)
+	log(fmt.Sprintf("TestM1 - [%s] is %d bytes long", calibrations[calName], fileSize), nil)
+
+	// Make some buffers
+	preBlock := make([]byte, 0x108000)
+	calBlock := make([]byte, 0x78000)
+
+	// Read in all the bytes
+	n, err := p.Read(preBlock)
+	if err != nil {
+		log("TestM1 - Error reading calibration", err)
+		return nil, err
+	}
+	log(fmt.Sprintf("TestM1 - reading 0x%X bytes from pre-calibration file.", n), nil)
+
+	n, err = f.Read(calBlock)
+	if err != nil {
+		log("TestM1 - Error reading calibration", err)
+		return nil, err
+	}
+
+	log(fmt.Sprintf("TestM1 - reading 0x%X bytes from calibration file.", n), nil)
+
+	block := append(preBlock, calBlock...)
+
+	// Doubletime
+	//block = append(block, block[0x100000:0x180000]...)
+
+	log(fmt.Sprintf("Length: 0x%X", len(block)), nil)
+
+	count := 0
+
+	sizes := make(map[string]int)
+
+	previous := 0x0000
+
+	var addresses []int
+
+	index := 0x108000
+
+Loop:
+	for {
+
+		matches := FindMatch(block[index:])
+		base := index
+
+		for _, i := range matches {
+
+			index = base + i[0]
+
+			if index > 0x118000 {
+				break Loop
+			}
+
+			//fmt.Printf("MATCH: 0x%X\n", index)
+
+			// Round up if odd?
+			if index%2 != 0 {
+				index++
+				//fmt.Printf("Rounding Up: %d > %d\n", index-1, index)
+				continue Loop
+			}
+
+			height := int(block[index+4]) + 1
+			width := int(block[index+5]) + 1
+
+			// Hope?
+			if height <= 1 || height > 32 || width > 50 {
+				index += 2
+				continue Loop
+			}
+
+			h2 := block[index+1] + 1
+			h4 := block[index+3] + 1
+
+			h7 := block[index+6] + 1
+
+			h8 := block[index+7] + 1
+
+			if index%2 == 0 && index >= previous && index < 0x118000 && height > 1 && h8 <= 11 && h8 > 0 && !(h2 == 2 && h4 == 2) && h7 < 100 {
 
 				count++
 
@@ -342,17 +509,15 @@ func (h *HexStuff) TestM1(calName string) error {
 				end := start + size
 				previous = end
 
-				sixteen := (int16(block[index+7]) << 8) | int16(block[index+6])
+				// Round up if odd?
+				if previous%2 != 0 {
+					previous++
+				}
 
-				match := fmt.Sprintf("MATCH: 0x%X   ADDRESS: 0x%X  END: 0x%X  SIZE: %d x %d		[%d]	M1: %d      M2: %d      L: 0x%X	L: %d", block[index:index+8], index, end, width, height, size, m1, m2, block[index+6:index+8], sixteen)
+				sixteen := (int(block[index+7]) << 8) | int(block[index+6])
+
+				match := fmt.Sprintf(" MATCH: -1 0x%X 0 0x%X +1 0x%X  ADDRESS: 0x%X  END: 0x%X  SIZE: %d x %d		[%d]	H2: %d      H4: %d      L: 0x%X	L: %d	|	START #%X | ROWS: %d x COLS: %d", block[index-8:index], block[index:index+8], block[index+8:index+16], index, end, width, height, size, h2, h4, block[index+6:index+8], sixteen, start, height, width)
 				log(match, nil)
-
-				//log(fmt.Sprintf("%X", block[index:end]), nil)
-
-				//fmt.Println("\n")
-
-				printTable16(width, height, block[start:end])
-				printTable(width, height, block[start:end])
 
 				sizeName := fmt.Sprintf("%d	x	%d", width, height)
 				var sizeCount int
@@ -364,19 +529,45 @@ func (h *HexStuff) TestM1(calName string) error {
 				}
 				sizes[sizeName] = sizeCount
 
-			}
+				addresses = append(addresses, index)
 
+				index = previous
+
+				continue Loop
+
+			}
 		}
 	}
 
 	log(fmt.Sprintf("COUNT: %d ", count), nil)
 
+	fmt.Println("")
+
 	for size, count := range sizes {
 		log(fmt.Sprintf("SIZE: %s		COUNT: %d", size, count), nil)
 	}
 
-	return nil
+	fmt.Println("")
 
+	for _, address := range addresses {
+		fmt.Printf("0x%X, ", address)
+	}
+
+	fmt.Println("")
+	//fmt.Println(matches)
+	fmt.Println("")
+
+	return addresses, nil
+
+}
+
+func FindMatch(block []byte) [][]int {
+	regex := string(0x00) + "[" + string(0x00) + "-" + string(0x05) + "]" + string(0x00) + "[" + string(0x00) + "-" + string(0x0F) + "]"
+
+	re := regexp.MustCompile(regex)
+	matches := re.FindAllIndex(block, -1)
+
+	return matches
 }
 
 func printTable(width, height int, table []byte) {

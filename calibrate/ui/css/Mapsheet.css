@@ -1,0 +1,41 @@
+.MapsheetJs {
+	border:1px SOLID #000;
+	border-spacing:0;
+	border-collapse: collapse;
+}
+
+.MapsheetJs-gray {
+	background-color:rgb(51, 122, 183);
+	text-align:center !important;
+	font-size:0.8em;
+	border-bottom:1px SOLID #000;
+	color: white;
+}
+
+.MapsheetJs tr {}
+.MapsheetJs td:first-child{border:1px SOLID #000;} /* Selects the row counter column */
+.MapsheetJs th {
+	background-color: rgb(51, 122, 183);
+	border-bottom:1px SOLID #000;
+	border-right:1px SOLID #000;
+	width:40px;
+	font-size:0.9em;
+	font-weight:normal;
+	text-align: center;
+	color: white;
+}
+.MapsheetJs td {
+	border:1px SOLID #999;
+	text-align:right;
+	padding:2px;
+	cursor:default;
+}
+
+.MapsheetJs .cellFocus {
+	border:2px SOLID #41A1F0;
+	padding:1px 2px;
+}
+.MapsheetJs td[contentEditable="true"] {
+	border:2px SOLID #1D76BF;
+	cursor:text;
+}

@@ -12,7 +12,13 @@ import (
 const debug = false
 
 type DisAsm struct {
-	block []byte
+	block           []byte
+	intRoutineAdrs  []int          // slice of interrupt routine addresses for start locations
+	intRoutineNames map[int]string // address of interrupt routine locations and name
+	vectorAdr       map[int]string // address of interrupt vector locations and name
+	memStarts       map[int]string // Starts of memory map Locations
+	memStops        map[int]string // Ends of memory map Locations
+	skip            map[int]int
 }
 
 var calibrations = map[string]string{
@@ -78,8 +84,8 @@ func New(calName string) *DisAsm {
 
 func (h *DisAsm) DisAsm() error {
 
-	// Double Trouble
-	//h.block = append(h.block, h.block[0x100000:0x180000]...)
+	h.GetInterrupts()
+	h.GetMemoryMap()
 
 	log(fmt.Sprintf("Length: 0x%X", len(h.block)), nil)
 
@@ -94,43 +100,37 @@ func (h *DisAsm) DisAsm() error {
 
 	// Program Counter - Start Address: 0x172080
 	pcs := []int{0x172080}
-	//pcs := []int{0x1F2080}
-	//pcs := []int{0x13E600}
-	//pcs := []int{0x171000, 0x172080}
-	//pcs := []int{0x13EA50, 0x172080}
-	//pcs := []int{0x100000, 0x172080}
+	pcs = append(pcs, h.intRoutineAdrs...)
 
-	for p := 0; p < len(pcs); p++ {
-		pc := pcs[p]
+	loops := 50
 
-		log(fmt.Sprintf("Start Address: [0x%X]", pc), nil)
+	for p := 0; p < len(pcs)+loops; p++ {
+
+		pc := 0xFFFFFF
+
+		if p < len(pcs) {
+			pc = pcs[p]
+		}
 
 	Loop:
 		for {
 
-			//if len(opcodes) > 80000 {
-			//	break Loop
-			//}
-
-			//if pc < 0x100000 {
-			//	other[pc] = true
-			//	crawled[pc] = 3
-			//	pc = 0xFFFFFF
-			//	continue Loop
-			//}
-
 			// Sub and Jumps, or break if out of range
 			if pc+10 > len(h.block) {
-				pc = 0xFFFFFF
-				if other[pc] {
+				if pc != 0xFFFFFF {
 					crawled[pc] = 1
+					pc &= 0x17FFFF
+				} else {
+					pc = 0xFFFFFF
+					if other[pc] {
+						crawled[pc] = 1
+					}
 				}
 
 				// Conditional Jumps
 				for adr, _ := range jumps {
 					if crawled[adr] == 0 {
 						pc = adr
-						//log(fmt.Sprintf("CRAWLING JUMP ADDRESS 0x%X", adr), nil)
 						continue Loop
 					}
 				}
@@ -139,7 +139,6 @@ func (h *DisAsm) DisAsm() error {
 				for adr, _ := range subroutines {
 					if crawled[adr] == 0 {
 						pc = adr
-						//log(fmt.Sprintf("CRAWLING SUB ADDRESS 0x%X", adr), nil)
 						continue Loop
 					}
 				}
@@ -149,12 +148,10 @@ func (h *DisAsm) DisAsm() error {
 					if crl == false && crawled[adr] == 0 {
 						other[adr] = true
 						pc = adr
-						//log(fmt.Sprintf("CRAWLING OTHER ADDRESS 0x%X", adr), nil)
 						continue Loop
 					}
 				}
 
-				//log(fmt.Sprintf("No more suff to crawl? : 0x%X", pc), nil)
 				break Loop
 			}
 
@@ -173,10 +170,7 @@ func (h *DisAsm) DisAsm() error {
 
 			if err != nil {
 				errors++
-
-				//log("Parser", err)
 				log(fmt.Sprintf("ERROR!! Address: 0x%X		Instruction %X", pc, b), err)
-
 				crawled[pc] = 3
 				pc = 0xFFFFFF
 				continue Loop
@@ -197,21 +191,25 @@ func (h *DisAsm) DisAsm() error {
 
 			// Append our Jumps to our Jumps list
 			for JumpAdd, JumpVal := range instr.Jumps {
-				jumps[JumpAdd] = append(jumps[JumpAdd], JumpVal...)
-
 				// If this is not a conditional jump, point the program counter at the address
 				switch instr.Mnemonic {
 				case "SJMP", "EJMP", "LJMP", "TIJMP":
+					jumps[JumpAdd] = append(jumps[JumpAdd], JumpVal...)
 					//log(instr.Mnemonic, nil)
 					pc = JumpAdd
 					continue Loop
+				case "EBR", "BR":
+					pc = 0xFFFFFF // TODO!!!!!!!!
+					continue Loop
+				default:
+					jumps[JumpAdd] = append(jumps[JumpAdd], JumpVal...)
 				}
+
 			}
 
-			// Subroutine Returns {
-			if instr.Mnemonic == "RET" {
+			// Subroutine Returns and Resets {
+			if instr.Mnemonic == "RET" || instr.Mnemonic == "RST" {
 				returns++
-				//other[pc+instr.ByteLength] = false
 				pc = 0xFFFFFF
 				continue Loop
 			}
@@ -233,23 +231,7 @@ func (h *DisAsm) DisAsm() error {
 	// Print out the stuff before the Assembly
 	for chkAdr := 0; chkAdr < opcodes[0].Address; chkAdr++ {
 
-		if subroutines[chkAdr] != nil {
-			callers := ""
-			for _, caller := range subroutines[chkAdr] {
-				callers = callers + fmt.Sprintf("  ============================================================= [CALLED FROM 0x%X - %s] \n", caller.CallFrom, caller.Mnemonic)
-			}
-			log(fmt.Sprintf("\n======== SUB_ 0x%X ==================================================================================\n%s", chkAdr, callers), nil)
-
-		}
-
-		if jumps[chkAdr] != nil {
-			jumpers := ""
-			for _, jumper := range jumps[chkAdr] {
-				jumpers = jumpers + fmt.Sprintf("  ============================================================= [JUMP FROM 0x%X - %s] \n", jumper.JumpFrom, jumper.Mnemonic)
-			}
-			log(fmt.Sprintf("\n======== JUMP_ 0x%X \n%s", chkAdr, jumpers), nil)
-
-		}
+		chkAdr += h.doMemoryMap(chkAdr)
 
 		if xrefs[chkAdr] != nil {
 			referers := "  "
@@ -270,12 +252,16 @@ func (h *DisAsm) DisAsm() error {
 		} else if crawled[chkAdr] != 1 {
 			address := addSpaces(fmt.Sprintf("[0x%X] %d ?: ", chkAdr, crawled[chkAdr]), 20)
 			shortDesc := fmt.Sprintf("%.2X ", h.block[chkAdr])
+
 			for i := 1; i < 32; i++ {
 				if i%8 == 0 {
 					shortDesc += " "
 				}
 				chkAdr++
 				if chkAdr >= len(h.block) {
+					break
+				} else if h.memStarts[chkAdr] != "" || h.memStops[chkAdr] != "" {
+					shortDesc += fmt.Sprintf("%.2X ", h.block[chkAdr])
 					break
 				} else if crawled[chkAdr] != 1 && xrefs[chkAdr] == nil {
 					shortDesc += fmt.Sprintf("%.2X ", h.block[chkAdr])
@@ -292,13 +278,20 @@ func (h *DisAsm) DisAsm() error {
 	// Print out the Assembly
 
 	for index, instr := range opcodes {
+
+		h.doMemoryMap(instr.Address)
+
 		if subroutines[instr.Address] != nil {
 			callers := ""
 			for _, caller := range subroutines[instr.Address] {
 				callers = callers + fmt.Sprintf("  ============================================================= [CALLED FROM 0x%X - %s] \n", caller.CallFrom, caller.Mnemonic)
 			}
-			log(fmt.Sprintf("\n======== SUB_ 0x%X ==================================================================================\n%s", instr.Address, callers), nil)
+			log(fmt.Sprintf("\n======== SUBROUTINE_ 0x%X ==================================================================================\n%s", instr.Address, callers), nil)
+		}
 
+		if h.intRoutineNames[instr.Address] != "" {
+
+			log(fmt.Sprintf("\n======== INTERRUPT ROUTINE_ %s ==================================================================================", h.intRoutineNames[instr.Address]), nil)
 		}
 
 		if jumps[instr.Address] != nil {
@@ -307,7 +300,6 @@ func (h *DisAsm) DisAsm() error {
 				jumpers = jumpers + fmt.Sprintf("  ============================================================= [JUMP FROM 0x%X - %s] \n", jumper.JumpFrom, jumper.Mnemonic)
 			}
 			log(fmt.Sprintf("\n======== JUMP_ 0x%X \n%s", instr.Address, jumpers), nil)
-
 		}
 
 		if instr.Ignore == false {
@@ -368,21 +360,19 @@ func (h *DisAsm) DisAsm() error {
 		chkAdr := instr.Address + instr.ByteLength
 	Check:
 		for {
+			//h.doMemoryMap(chkAdr)
+
 			if chkAdr >= len(h.block) {
+				h.doMemoryMap(instr.Address)
 				break Check
-			} else if xrefs[chkAdr] != nil {
-				referers := ""
-				for _, referrer := range xrefs[chkAdr] {
-					referers = referers + fmt.Sprintf("  ============================================================= [XREF FROM 0x%X - %s] \n", referrer.XRefFrom, referrer.Mnemonic)
-				}
-				log(fmt.Sprintf("\n======== XREF_ 0x%X %s \n%s", chkAdr, regName("", chkAdr), referers), nil)
 
-				address := addSpaces(fmt.Sprintf("[0x%X]   X: ", chkAdr), 20)
-				shortDesc := fmt.Sprintf("%.2X ", h.block[chkAdr])
-
+			} else if h.vectorAdr[chkAdr] != "" { // Vector Addresses
+				address := addSpaces(fmt.Sprintf("[0x%X]   V: ", chkAdr), 20)
+				shortDesc := fmt.Sprintf("%.2X		(%s)", h.block[chkAdr:chkAdr+2], h.vectorAdr[chkAdr])
 				log(address+shortDesc, nil)
+				chkAdr++
 
-			} else if crawled[chkAdr] != 1 {
+			} else if crawled[chkAdr] != 1 { // Crawled but not parsed
 				address := addSpaces(fmt.Sprintf("[0x%X] %d ?: ", chkAdr, crawled[chkAdr]), 20)
 				shortDesc := fmt.Sprintf("%.2X ", h.block[chkAdr])
 				for i := 1; i < 32; i++ {
@@ -391,8 +381,12 @@ func (h *DisAsm) DisAsm() error {
 					}
 					chkAdr++
 					if chkAdr >= len(h.block) {
+						h.doMemoryMap(instr.Address)
 						break
-					} else if crawled[chkAdr] != 1 && xrefs[chkAdr] == nil {
+					} else if h.memStarts[chkAdr] != "" || h.memStops[chkAdr] != "" {
+						shortDesc += fmt.Sprintf("%.2X ", h.block[chkAdr])
+						break
+					} else if crawled[chkAdr] != 1 && xrefs[chkAdr] == nil && h.vectorAdr[chkAdr] == "" {
 						shortDesc += fmt.Sprintf("%.2X ", h.block[chkAdr])
 					} else {
 						chkAdr--
@@ -400,7 +394,7 @@ func (h *DisAsm) DisAsm() error {
 					}
 				}
 				log(address+shortDesc, nil)
-			} else {
+			} else { // Bomb out
 				break Check
 			}
 			chkAdr++

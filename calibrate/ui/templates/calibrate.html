@@ -1,0 +1,149 @@
+
+	<link rel='stylesheet' type='text/css' href='css/calibrate.css'/>
+	<link rel='stylesheet' type='text/css' href='css/Mapsheet.css'/>
+	<script src='js/Mapsheet.js'></script>
+	<script type="text/javascript" src="js/vis.js"></script>
+	<script>
+
+		// ====================
+		// 2D Map
+		// ====================
+
+		window.onload = function() {
+
+		{{ range .Payload.Tables }}
+
+			var container = document.getElementById("2d-map-{{ .AddressStr }}");
+
+			data = {{ .Data }};
+
+
+			// initialize arrays
+			var cols = [];
+			var rows = [];
+
+			for (var x = 0; x < {{ .Width }}; x++) {
+				//cols.push(x*1);
+				cols.push((x*1)+1);
+			}
+
+			for (var x = 0; x < {{ .Height }}; x++) {
+				//rows.push(x*1);
+				rows.push((x*1)+1);
+			}
+
+			myTable = new Mapsheet(container, cols, rows, data);
+
+		{{ end }}
+
+			// Cell events
+			/*
+				onCellValueChanged(cell,oldValue,newValue)
+				onCellClick(cell)
+				onCellDblClick(cell)
+				onCellFocused(cell)
+			*/
+
+
+		}
+
+		// ====================
+		// 3D Map
+		// ====================
+
+		var data = null;
+		var graph = null;
+
+		// Called when the Visualization API is loaded.
+		function drawVisualization() {
+
+		{{ range .Payload.Tables }}
+
+			// Create and populate a data table.
+			data = new vis.DataSet();
+			// create some nice looking data with sin/cos
+			var counter = 0;
+
+			var width = {{ .Width }}
+			var height = {{ .Height }}
+			var tableData = {{ .Data }}
+
+			console.log(tableData[0]);
+
+			for (var x = 0; x < width; x++) {
+			  for (var y = 0; y < height; y++) {
+			    var value = tableData[x+(y*width)];
+			    data.add({id:counter++,x:x,y:y,z:value,style:value});
+			  }
+			}
+
+			// specify options
+			var options = {
+			  width:  '750px',
+			  height: '600px',
+			  style: 'surface',
+			  showPerspective: true,
+			  showGrid: true,
+			  showShadow: false,
+			  keepAspectRatio: true,
+			  verticalRatio: .8,
+			  yCenter: '40%'
+			};
+
+			// Instantiate our graph object.
+			var container = document.getElementById('3d-map-{{ .AddressStr }}');
+			graph = new vis.Graph3d(container, data, options);
+
+		{{ end }}
+
+		}
+	</script>
+
+</head>
+
+<body  onload="drawVisualization();">
+
+
+{{range $i, $table := .Payload.Tables}}
+
+	<div class="info wrapper">
+
+		<div class="info title">
+			<h4>#{{ $i }} - {{ $table.AddressStr }}</h4>
+		</div>
+
+
+
+
+		<div class="info meta">
+			<h4>H2: {{ $table.H2 }}</h4>
+		</div>
+
+
+
+
+		<div class="info meta">
+			<h4>H4: {{ $table.H4 }}</h4>
+		</div>
+
+		<div class="info meta">
+			<h4>H7: {{ $table.H7 }}</h4>
+		</div>
+
+		<div class="info meta">
+			<h4>H8: {{ $table.H8 }}</h4>
+		</div>
+
+	</div>
+
+
+	<div class="wrapper">
+		<div id="2d-map-{{ $table.AddressStr }}" class="left"></div>
+		<div id="3d-map-{{ $table.AddressStr }}" class="right"></div>
+	</div>
+
+	<hr>
+
+{{ end }}
+
+	<!-- <div id="info"></div> -->

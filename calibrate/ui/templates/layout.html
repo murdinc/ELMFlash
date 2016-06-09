@@ -1,0 +1,115 @@
+{{ if .RenderLayout }}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="">
+    <meta name="author" content="">
+
+    <title>fstuner</title>
+
+    <!-- Bootstrap Core CSS -->
+    <link href="/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Custom CSS -->
+    <link href="/css/simple-sidebar.css" rel="stylesheet">
+    <link href="/css/font-awesome.min.css" rel="stylesheet">
+    <link href="/css/fstuner.css" rel="stylesheet">
+
+</head>
+
+<body>
+
+    <div id="wrapper">
+    <!-- Sidebar -->
+        <div id="sidebar-wrapper">
+            <ul class="sidebar-nav nav-pills nav-stacked" id="menu">
+                <li class="sidebar-brand">
+                  <i class="fa fa-wrench" aria-hidden="true"></i> fstuner
+                </li>
+                <li class="active">
+                    <a href="/dashboard"><span class="fa-stack fa-lg pull-left"><i class="fa fa-dashboard fa-stack-1x "></i></span>Dashboard</a>
+                </li>
+                <li>
+                    <a href="#"><span class="fa-stack fa-lg pull-left"><i class="fa fa-server fa-stack-1x "></i></span>Fuel</a>
+                    <ul class="nav-pills nav-stacked" style="list-style-type:none;">
+                        <li><a href="/dashboard/images">Closed Loop</a></li>
+                        <li><a href="/dashboard/images">Open Loop</a></li>
+                    </ul>
+                </li>
+                <li>
+                    <a href="/dashboard/volumes"><span class="fa-stack fa-lg pull-left"><i class="fa fa-database fa-stack-1x "></i></span>Ignition</a>
+                    <ul class="nav-pills nav-stacked" style="list-style-type:none;">
+                        <li><a href="/dashboard/volumes">Volumes</a></li>
+                    </ul>
+                </li>
+                <li>
+                    <a href="/dashboard/vpcs"><span class="fa-stack fa-lg pull-left"><i class="fa fa-arrows fa-stack-1x "></i></span>Miscellaneous</a>
+                    <ul class="nav-pills nav-stacked" style="list-style-type:none;">
+                        <li><a href="/dashboard/vpcs">MAF Table</a></li>
+                    </ul>
+                </li>
+            </ul>
+        </div><!-- /#sidebar-wrapper -->
+
+        <!-- Page Content -->
+        <div id="page-content-wrapper">
+            <div class="container-fluid">
+                <div class="row">
+                    <div class="col-lg-12">
+                        <div id="content">
+                            {{ yield }}
+                        </div>
+                        <div class="loading-modal"></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+        <!-- /#page-content-wrapper -->
+
+    </div>
+    <!-- /#wrapper -->
+
+    <!-- Modal Placeholder -->
+
+    <!-- Default bootstrap modal example -->
+    <div class="modal fade" id="theModal" tabindex="-1" role="dialog" aria-labelledby="theModal" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form>
+
+                    <div class="modal-header">
+                        <div id="modalTitle">
+                            <h4 class="modal-title">Loading...</h4>
+                        </div>
+                    </div>
+
+                    <div class="modal-body">
+                        ...
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+                    </div>
+
+                </form>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="/js/jquery.js"></script>
+    <script src="/js/bootstrap.min.js"></script>
+    <script src="/js/fstuner.js"></script>
+
+</body>
+</html>
+{{ else }}
+    {{ yield }}
+{{ end }}
+

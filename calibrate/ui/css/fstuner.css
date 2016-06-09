@@ -1,0 +1,49 @@
+* {
+  border-radius: 0 !important;
+}
+
+.sidebar-nav > .sidebar-brand {
+    color: #337ab7;
+    font-size: 35px;
+}
+
+.sidebar-nav > .sidebar-brand > i {
+    color: #337ab7;
+    font-size: 35px;
+    -webkit-text-fill-color: black; /* Will override color (regardless of order) */
+    -webkit-text-stroke-width: 1px;
+    -webkit-text-stroke-color: #337ab7;
+}
+
+.loading-modal {
+    display:    none;
+    position:   fixed;
+    z-index:    1000;
+    top:        0;
+    left:       0;
+    height:     100%;
+    width:      100%;
+    background: rgba( 255, 255, 255, .5 )
+                url('/static/pizza-loader.gif')
+                50% 50%
+                no-repeat;
+    margin: 0 auto;
+}
+
+/* When the body has the loading class, we turn
+   the scrollbar off with overflow:hidden */
+body.loading {
+    overflow: hidden;
+}
+
+/* Anytime the body has the loading class, our
+   modal element will be visible */
+body.loading .loading-modal {
+    display: block;
+}
+
+h1 .btn-group {
+    display: inline-block;
+    margin-bottom: 8px;
+    margin-left: 8px;
+}

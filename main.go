@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/murdinc/ELMFlash/calibrate"
 	"github.com/murdinc/ELMFlash/compare"
 	"github.com/murdinc/ELMFlash/disasm"
 	"github.com/murdinc/ELMFlash/hexstuff"
 	"github.com/murdinc/ELMFlash/iso9141"
 	"github.com/murdinc/ELMFlash/j3"
-	"github.com/murdinc/cli"
+	"github.com/murdinc/legacy-cli"
 )
 
 // Main Function
@@ -118,7 +119,7 @@ func main() {
 			Name:        "maptest2",
 			ShortName:   "m2",
 			Example:     "maptest2",
-			Description: "Map Test 1",
+			Description: "Map Test 2",
 			Arguments: []cli.Argument{
 				cli.Argument{Name: "calibration", Usage: "maptest2 msp", Description: "The name of the calibration to run map tests on", Optional: false},
 			},
@@ -126,6 +127,20 @@ func main() {
 			Action: func(c *cli.Context) {
 				hs := hexstuff.New()
 				hs.TestM2(c.NamedArg("calibration"))
+			},
+		},
+		{
+			Name:        "maptest3",
+			ShortName:   "m3",
+			Example:     "maptest2",
+			Description: "Map Test 3",
+			Arguments: []cli.Argument{
+				cli.Argument{Name: "calibration", Usage: "maptest2 msp", Description: "The name of the calibration to run map tests on", Optional: false},
+			},
+
+			Action: func(c *cli.Context) {
+				hs := hexstuff.New()
+				hs.TestM3(c.NamedArg("calibration"))
 			},
 		},
 		{
@@ -156,6 +171,31 @@ func main() {
 			Action: func(c *cli.Context) {
 				d := disasm.New(c.NamedArg("calibration"))
 				d.DisAsm()
+			},
+		},
+		{
+			Name:        "interrupt",
+			ShortName:   "int",
+			Example:     "interrupt",
+			Description: "List Interrupt Vector Addresses in Calibration File",
+			Arguments: []cli.Argument{
+				cli.Argument{Name: "calibration", Usage: "interrupt msp", Description: "The name of the calibration to scan", Optional: false},
+			},
+			Action: func(c *cli.Context) {
+				d := disasm.New(c.NamedArg("calibration"))
+				d.GetInterrupts()
+			},
+		},
+		{
+			Name:        "calibrate",
+			ShortName:   "cal",
+			Example:     "interrupt",
+			Description: "Calibrate",
+			Arguments: []cli.Argument{
+				cli.Argument{Name: "calibration", Usage: "calibrate msp", Description: "The name of the calibration to edit", Optional: false},
+			},
+			Action: func(c *cli.Context) {
+				calibrate.Calibrate(true)
 			},
 		},
 	}
