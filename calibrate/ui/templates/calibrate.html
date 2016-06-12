@@ -87,7 +87,8 @@
 			  showShadow: false,
 			  keepAspectRatio: true,
 			  verticalRatio: .8,
-			  yCenter: '40%'
+			  yCenter: '40%',
+			  zMax: 255,
 			};
 
 			// Instantiate our graph object.
@@ -109,29 +110,39 @@
 	<div class="info wrapper">
 
 		<div class="info title">
-			<h4>#{{ $i }} - {{ $table.AddressStr }}</h4>
-		</div>
-
-
-
-
-		<div class="info meta">
-			<h4>H2: {{ $table.H2 }}</h4>
-		</div>
-
-
-
-
-		<div class="info meta">
-			<h4>H4: {{ $table.H4 }}</h4>
+			<h5>#{{ $i }} - {{ $table.AddressStr }} - {{ $table.EndStr }}</h5>
 		</div>
 
 		<div class="info meta">
-			<h4>H7: {{ $table.H7 }}</h4>
+			<h5>H1: {{ $table.H1Str }} {{ $table.H1 }}</h5>
 		</div>
 
 		<div class="info meta">
-			<h4>H8: {{ $table.H8 }}</h4>
+			<h5>H2: {{ $table.H2Str }} {{ $table.H2 }}</h5>
+		</div>
+
+		<div class="info meta">
+			<h5>H3: {{ $table.H3Str }} {{ $table.H3 }}</h5>
+		</div>
+
+		<div class="info meta">
+			<h5>H4: {{ $table.H4Str }} {{ $table.H4 }}</h5>
+		</div>
+
+		<div class="info meta">
+			<h5>H5: {{ $table.H5Str }} {{ $table.H5 }}</h5>
+		</div>
+
+		<div class="info meta">
+			<h5>H6: {{ $table.H6Str }} {{ $table.H6 }}</h5>
+		</div>
+
+		<div class="info meta">
+			<h5>H7: {{ $table.H7Str }} {{ $table.H7 }}</h5>
+		</div>
+
+		<div class="info meta">
+			<h5>H8: {{ $table.H8Str }} {{ $table.H8 }}</h5>
 		</div>
 
 	</div>

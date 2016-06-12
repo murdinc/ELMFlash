@@ -534,6 +534,9 @@ Loop:
 				index = previous
 
 				continue Loop
+			}
+
+			if index%2 == 0 && index >= previous && index < 0x118000 && height > 1 && h8 <= 11 && h8 > 0 && !(h2 == 2 && h4 == 2) && h7 < 100 {
 
 			}
 		}

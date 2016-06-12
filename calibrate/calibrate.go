@@ -206,7 +206,9 @@ func index(ctx *iris.Context) {
 
 	for _, address := range addresses {
 		table := calibration.GetTable(address)
+
 		tables = append(tables, *table)
+
 	}
 
 	payload["Tables"] = tables
@@ -218,17 +220,26 @@ func index(ctx *iris.Context) {
 type Table struct {
 	Address    int
 	AddressStr string
+	EndStr     string
 	Height     int
 	Width      int
 
-	H1 int
-	H2 int
-	H3 int
-	H4 int
-	H5 int
-	H6 int
-	H7 int
-	H8 int
+	H1    int
+	H1Str string
+	H2    int
+	H2Str string
+	H3    int
+	H3Str string
+	H4    int
+	H4Str string
+	H5    int
+	H5Str string
+	H6    int
+	H6Str string
+	H7    int
+	H7Str string
+	H8    int
+	H8Str string
 
 	Size  int
 	Start int
@@ -251,17 +262,37 @@ func getTable(ctx *iris.Context) {
 // 0x10AA60
 func (c *Calibration) GetTable(index int) *Table {
 
+	h1 := int(c.block[index])
+	h1Str := fmt.Sprintf("0x%.2X", c.block[index])
+
+	h2 := int(c.block[index+1])
+	h2Str := fmt.Sprintf("0x%.2X", c.block[index+1])
+
+	h3 := int(c.block[index+2])
+	h3Str := fmt.Sprintf("0x%.2X", c.block[index+2])
+
+	h4 := int(c.block[index+3])
+	h4Str := fmt.Sprintf("0x%.2X", c.block[index+3])
+
+	h5 := int(c.block[index+4]) // rows
+	h5Str := fmt.Sprintf("0x%.2X", c.block[index+4])
+
+	h6 := int(c.block[index+5]) // cols
+	h6Str := fmt.Sprintf("0x%.2X", c.block[index+5])
+
+	h7 := int(c.block[index+6])
+	h7Str := fmt.Sprintf("0x%.2X", c.block[index+6])
+
+	h8 := int(c.block[index+7])
+	h8Str := fmt.Sprintf("0x%.2X", c.block[index+7])
+
 	height := int(c.block[index+4]) + 1
 	width := int(c.block[index+5]) + 1
 
-	h1 := int(c.block[index]) + 1
-	h2 := int(c.block[index+1]) + 1
-	h3 := int(c.block[index+2]) + 1
-	h4 := int(c.block[index+3]) + 1
-	h5 := int(c.block[index+4]) + 1
-	h6 := int(c.block[index+5]) + 1
-	h7 := int(c.block[index+6]) + 1
-	h8 := int(c.block[index+7]) + 1
+	// axe flip™
+	if h5&0x10 == 0x10 {
+		width, height = height, width
+	}
 
 	size := width * height
 	start := index + 8
@@ -269,31 +300,58 @@ func (c *Calibration) GetTable(index int) *Table {
 
 	table := new(Table)
 
-	table.Address = index
-	table.AddressStr = fmt.Sprintf("0x%.6X", index)
-	table.Height = height
-	table.Width = width
+	data := make([]int, size)
+
+	for i := range data {
+
+		val := int(c.block[start+i])
+		/*
+			if h7_1 == 1 && i%2 == 0 {
+				val = int(c.block[start+i]) >> 4
+				val2 := int(c.block[start+i]) & 0xF
+				data[i] = val
+				data[i+1] = val2
+
+			} else if h7_1 == 0 {
+				data[i] = val
+			}
+		*/
+		data[i] = val
+	}
 
 	table.H1 = h1
+	table.H1Str = h1Str
+
 	table.H2 = h2
+	table.H2Str = h2Str
+
 	table.H3 = h3
+	table.H3Str = h3Str
+
 	table.H4 = h4
+	table.H4Str = h4Str
+
 	table.H5 = h5
+	table.H5Str = h5Str
+
 	table.H6 = h6
+	table.H6Str = h6Str
+
 	table.H7 = h7
+	table.H7Str = h7Str
+
 	table.H8 = h8
+	table.H8Str = h8Str
 
 	table.Size = size
 	table.Start = start
 	table.End = end
-	//table.Data = c.block[start:end]
 
-	data := make([]int, len(c.block[start:end]))
-	for i := range data {
-		// assuming little endian
-		data[i] = int(c.block[start+i])
-	}
-
+	table.Address = index
+	table.AddressStr = fmt.Sprintf("0x%.6X", index)
+	table.EndStr = fmt.Sprintf("0x%.6X", end)
+	table.Height = height
+	table.Width = width
 	table.Data = data
 
 	return table
