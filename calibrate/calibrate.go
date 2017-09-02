@@ -6,6 +6,9 @@ import (
 	"regexp"
 
 	"github.com/kataras/iris"
+	// you can omit the context import statement and use `iris.Context` if go > 1.9
+	"github.com/kataras/iris/context"
+
 	"github.com/murdinc/ELMFlash/hexstuff"
 	"github.com/toqueteos/webbrowser"
 )
@@ -184,7 +187,7 @@ func GetMaps(block []byte) []int {
 	return addresses
 }
 
-func index(ctx *iris.Context) {
+func index(ctx context.Context) {
 	payload := make(map[string]interface{})
 
 	var tables []Table
@@ -214,7 +217,8 @@ func index(ctx *iris.Context) {
 	payload["Tables"] = tables
 	payload["Errors"] = nil
 
-	ctx.Render("templates/calibrate.html", Content{Title: "Calibrate", Payload: payload, Calibration: "MSP/MP3", RenderLayout: true})
+	ctx.ViewData("", Content{Title: "Calibrate", Payload: payload, Calibration: "MSP/MP3", RenderLayout: true})
+	ctx.View("templates/calibrate.html")
 }
 
 type Table struct {
@@ -247,7 +251,7 @@ type Table struct {
 	Data  []int
 }
 
-func getTable(ctx *iris.Context) {
+func getTable(ctx context.Context) {
 	payload := make(map[string]interface{})
 
 	calibration := New("mp3")
@@ -256,7 +260,7 @@ func getTable(ctx *iris.Context) {
 	payload["Table"] = table
 	payload["Errors"] = nil
 
-	ctx.JSONP(iris.StatusOK, "callbackName", Content{Title: "Calibrate", Payload: payload, Calibration: "MSP/MP3", RenderLayout: true})
+	ctx.JSONP("callbackName", Content{Title: "Calibrate", Payload: payload, Calibration: "MSP/MP3", RenderLayout: true})
 }
 
 // 0x10AA60
