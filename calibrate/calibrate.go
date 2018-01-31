@@ -1,11 +1,17 @@
 package calibrate
 
 import (
+	"encoding/json"
 	"fmt"
+	"html/template"
+	"net/http"
 	"os"
 	"regexp"
+	"strings"
 
-	"github.com/kataras/iris"
+	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/middleware"
+	"github.com/goware/cors"
 	"github.com/murdinc/ELMFlash/hexstuff"
 	"github.com/toqueteos/webbrowser"
 )
@@ -95,28 +101,56 @@ func Calibrate(devMode bool) {
 
 	guiLocation := "calibrate/ui/"
 
-	api := iris.New()
+	r := chi.NewRouter()
 
-	// Template Configuration
-	api.Config().Render.Template.Directory = guiLocation
-	api.Config().Render.Template.Layout = "templates/layout.html"
+	cors := cors.New(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE"},
+		AllowCredentials: true,
+	})
+
+	r.Use(cors.Handler)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.StripSlashes)
+	r.Use(middleware.Logger)
 
 	// Static Asset Folders
-	api.StaticWeb("/js", guiLocation, 0)
-	api.StaticWeb("/css", guiLocation, 0)
-	api.StaticWeb("/fonts", guiLocation, 0)
-	api.StaticWeb("/static", guiLocation, 0)
+	FileServer(r, "/js", http.Dir(guiLocation))
+	FileServer(r, "/css", http.Dir(guiLocation))
+	FileServer(r, "/fonts", http.Dir(guiLocation))
+	FileServer(r, "/static", http.Dir(guiLocation))
 
 	// Index and Dashboard
-	api.Get("/", index)
-	api.Get("/table/:type/:address", getTable)
+	r.Get("/", index)
+	r.Get("/table/:type/:address", getTable)
 
 	if !devMode {
 		webbrowser.Open("http://localhost:8080/") // TODO race condition?
 	}
 
-	api.Listen(":8080") // TODO optionally configurable port #
+	http.ListenAndServe(":8080", r)
 
+}
+
+// FileServer conveniently sets up a http.FileServer handler to serve
+// static files from a http.FileSystem.
+func FileServer(r chi.Router, path string, root http.FileSystem) {
+
+	if strings.ContainsAny(path, "{}*") {
+		panic("FileServer does not permit URL parameters.")
+	}
+
+	fs := http.FileServer(root)
+
+	if path != "/" && path[len(path)-1] != '/' {
+		r.Get(path, http.RedirectHandler(path+"/", 301).ServeHTTP)
+		path += "/"
+	}
+	path += "*"
+
+	r.Get(path, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fs.ServeHTTP(w, r)
+	}))
 }
 
 func GetMaps(block []byte) []int {
@@ -184,25 +218,24 @@ func GetMaps(block []byte) []int {
 	return addresses
 }
 
-func index(ctx *iris.Context) {
+func index(w http.ResponseWriter, r *http.Request) {
+
+	t, err := template.ParseFiles("calibrate/ui/templates/calibrate.html")
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
 	payload := make(map[string]interface{})
 
 	var tables []Table
 
-	// msp
-	//calibration := New("msp")
-	//addresses := []int{0x108F7E, 0x1090C8, 0x109212, 0x1093F4, 0x10953E, 0x109770, 0x109876, 0x109A2E, 0x109A98, 0x109B64, 0x109C88, 0x109CDC, 0x109D1C, 0x109F30, 0x10A2B8, 0x10A440, 0x10AB1E, 0x10AC68, 0x10ADB2, 0x10AEFC, 0x10B046, 0x10B20A, 0x10B218, 0x10B226, 0x10B234, 0x10B242, 0x10B250, 0x10B25E, 0x10B26C, 0x10B27A, 0x10B288, 0x10B296, 0x10B2A4, 0x10B2B2, 0x10B2C0, 0x10B2CE, 0x10B2DC, 0x10B2EA, 0x10B316, 0x10B48E, 0x10B618, 0x10B644, 0x10B680, 0x10B716, 0x10B752, 0x10B75E, 0x10B76A, 0x10B776, 0x10B872, 0x10B944, 0x10BE36, 0x10C14A, 0x10C1EE, 0x10C32E, 0x10C46E, 0x10C5AE, 0x10C6F6, 0x10C836, 0x10CA5A, 0x10CB5A, 0x10CC22, 0x10CCEA, 0x10CDB2, 0x10CE22, 0x10CE92, 0x10CF02, 0x10CF72, 0x10CFE2, 0x10D052, 0x10D0C2, 0x10D396, 0x10D3C0, 0x10D45E, 0x10D52E, 0x10D814, 0x10E204, 0x10E2CE, 0x10E3BA, 0x10E68C, 0x10E6EE, 0x10E766, 0x10E7DE, 0x10EA54, 0x10EDCA, 0x10F0FE, 0x10F158, 0x10F634, 0x10F6FC}
+	calName := "mp3"
+	calibration := New(calName)
 
-	// mp3
-	calibration := New("mp3")
-	//addresses := []int{0x10AB3A, 0x10A586, 0x10A660, 0x10A73A, 0x10A814, 0x10A986, 0x10AA60, 0x10ABEA, 0x10AC98, 0x10ADF8, 0x10AE62, 0x10AF2E, 0x10B042, 0x10B0E6, 0x10BA60, 0x10BB1E, 0x10BCDE, 0x10BDB8, 0x10BE92, 0x10BF6C, 0x10C046, 0x10C120, 0x10C1FA, 0x10C2D4, 0x10C3AE, 0x10C60E, 0x10C706, 0x10C7FE, 0x10CF5A, 0x10D3E0, 0x10D450, 0x10D528, 0x10D600, 0x10D6D8, 0x10D7B8, 0x10D890, 0x10DA84, 0x10DB04, 0x10DB84, 0x10DC04, 0x10E11E, 0x10E196, 0x10E20E, 0x10E6F8, 0x10E7C2, 0x10E876, 0x10EB20, 0x10F346, 0x10F55C, 0x10F624}
-	//addresses := []int{0x10A444, 0x10A470, 0x10A660, 0x10A73A, 0x10A814, 0x10A986, 0x10AA60, 0x10AB3A, 0x10ABEA, 0x10AC98, 0x10ADF8, 0x10AE62, 0x10AF2E, 0x10B0E6, 0x10B1D4, 0x10B27E, 0x10B306, 0x10B4AA, 0x10E11E, 0x10E196, 0x10E20E, 0x10E6F8, 0x10E7C2, 0x10E876, 0x10E902, 0x10EB20, 0x10ED8A, 0x10EE68, 0x10EF9A, 0x10EFCA, 0x10EFFA, 0x10F346, 0x10F55C, 0x10F624, 0x10F782, 0x10FF92, 0x10FFFC}
+	hs, _ := hexstuff.New(calName)
 
-	//addresses := GetMaps(calibration.block)
-
-	hs := hexstuff.New()
-
-	addresses, _ := hs.TestM3("mp3")
+	addresses, _ := hs.TestM1()
 
 	for _, address := range addresses {
 		table := calibration.GetTable(address)
@@ -214,7 +247,9 @@ func index(ctx *iris.Context) {
 	payload["Tables"] = tables
 	payload["Errors"] = nil
 
-	ctx.Render("templates/calibrate.html", Content{Title: "Calibrate", Payload: payload, Calibration: "MSP/MP3", RenderLayout: true})
+	/*ctx.Render("calibrate.html", Content{Title: "Calibrate", Payload: payload, Calibration: "MSP/MP3", RenderLayout: true})*/
+	w.Header().Set("Content-Type", "text/html")
+	t.Execute(w, payload)
 }
 
 type Table struct {
@@ -247,7 +282,7 @@ type Table struct {
 	Data  []int
 }
 
-func getTable(ctx *iris.Context) {
+func getTable(w http.ResponseWriter, r *http.Request) {
 	payload := make(map[string]interface{})
 
 	calibration := New("mp3")
@@ -256,7 +291,17 @@ func getTable(ctx *iris.Context) {
 	payload["Table"] = table
 	payload["Errors"] = nil
 
-	ctx.JSONP(iris.StatusOK, "callbackName", Content{Title: "Calibrate", Payload: payload, Calibration: "MSP/MP3", RenderLayout: true})
+	/*ctx.JSONP(iris.StatusOK, "callbackName", Content{Title: "Calibrate", Payload: payload, Calibration: "MSP/MP3", RenderLayout: true})*/
+
+	js, err := json.Marshal(Content{Title: "Calibrate", Payload: payload, Calibration: "MSP/MP3", RenderLayout: true})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(js)
+
 }
 
 // 0x10AA60

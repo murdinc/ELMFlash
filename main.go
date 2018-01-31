@@ -111,8 +111,8 @@ func main() {
 			},
 
 			Action: func(c *cli.Context) {
-				hs := hexstuff.New()
-				hs.TestM1(c.NamedArg("calibration"))
+				hs, _ := hexstuff.New(c.NamedArg("calibration"))
+				hs.TestM1()
 			},
 		},
 		{
@@ -125,22 +125,8 @@ func main() {
 			},
 
 			Action: func(c *cli.Context) {
-				hs := hexstuff.New()
-				hs.TestM2(c.NamedArg("calibration"))
-			},
-		},
-		{
-			Name:        "maptest3",
-			ShortName:   "m3",
-			Example:     "maptest2",
-			Description: "Map Test 3",
-			Arguments: []cli.Argument{
-				cli.Argument{Name: "calibration", Usage: "maptest2 msp", Description: "The name of the calibration to run map tests on", Optional: false},
-			},
-
-			Action: func(c *cli.Context) {
-				hs := hexstuff.New()
-				hs.TestM3(c.NamedArg("calibration"))
+				hs, _ := hexstuff.New(c.NamedArg("calibration"))
+				hs.TestM2()
 			},
 		},
 		{

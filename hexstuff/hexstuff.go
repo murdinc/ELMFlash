@@ -12,13 +12,66 @@ import (
 ////////////////..........
 const debug = false
 
-func New() *HexStuff {
-	controller := new(HexStuff)
-	return controller
+type HexStuff struct {
+	Calibration string
+	block       []byte
 }
 
-// Connection represents an OBD-II serial connection
-type HexStuff struct {
+func New(calName string) (*HexStuff, error) {
+	controller := new(HexStuff)
+
+	controller.Calibration = calName
+
+	// Pull in the stuff before the calibration file
+	preCalFile := "./calibrations/" + calibrations["pre"]
+	log(fmt.Sprintf("TestM1 - Pre-calibration File: %s", preCalFile), nil)
+
+	p, err := os.Open(preCalFile)
+	pi, err := p.Stat()
+	preFileSize := pi.Size()
+
+	// Pull in the Calibration file
+	calFile := "./calibrations/" + calibrations[calName]
+	log(fmt.Sprintf("TestM1 - Calibration File: %s", calFile), nil)
+
+	f, err := os.Open(calFile)
+	fi, err := f.Stat()
+	fileSize := fi.Size()
+	if err != nil {
+		log("TestM1 - Error opening file", err)
+		return nil, err
+	}
+
+	log(fmt.Sprintf("TestM1 - [%s] is %d bytes long", calibrations["pre"], preFileSize), nil)
+	log(fmt.Sprintf("TestM1 - [%s] is %d bytes long", calibrations[calName], fileSize), nil)
+
+	// Make some buffers
+	preBlock := make([]byte, 0x108000)
+	calBlock := make([]byte, 0x78000)
+
+	// Read in all the bytes
+	n, err := p.Read(preBlock)
+	if err != nil {
+		log("TestM1 - Error reading calibration", err)
+		return &HexStuff{}, err
+	}
+	log(fmt.Sprintf("TestM1 - reading 0x%X bytes from pre-calibration file.", n), nil)
+
+	n, err = f.Read(calBlock)
+	if err != nil {
+		log("TestM1 - Error reading calibration", err)
+		return &HexStuff{}, err
+	}
+
+	log(fmt.Sprintf("TestM1 - reading 0x%X bytes from calibration file.", n), nil)
+
+	block := append(preBlock, calBlock...)
+
+	controller.block = block
+
+	log(fmt.Sprintf("Length: 0x%X", len(block)), nil)
+
+	return controller, nil
 }
 
 var calibrations = map[string]string{
@@ -28,443 +81,18 @@ var calibrations = map[string]string{
 	"pre": "PRE.BIN",
 }
 
-func (h *HexStuff) TestM2(calName string) error {
-
-	// Pull in the stuff before the calibration file
-	preCalFile := "./calibrations/" + calibrations["pre"]
-	log(fmt.Sprintf("TestM2 - Pre-calibration File: %s", preCalFile), nil)
-
-	p, err := os.Open(preCalFile)
-	pi, err := p.Stat()
-	preFileSize := pi.Size()
-
-	// Pull in the Calibration file
-	calFile := "./calibrations/" + calibrations[calName]
-	log(fmt.Sprintf("TestM2 - Calibration File: %s", calFile), nil)
-
-	f, err := os.Open(calFile)
-	fi, err := f.Stat()
-	if err != nil {
-		log("TestM2 - Error opening file", err)
-		return err
-	}
-	fileSize := fi.Size()
-
-	log(fmt.Sprintf("TestM2 - [%s] is %d bytes long", calibrations["pre"], preFileSize), nil)
-	log(fmt.Sprintf("TestM2 - [%s] is %d bytes long", calibrations[calName], fileSize), nil)
-
-	// Make some buffers
-	preBlock := make([]byte, 0x108000)
-	calBlock := make([]byte, 0x78000)
-
-	// Read in all the bytes
-	n, err := p.Read(preBlock)
-	if err != nil {
-		log("TestM2 - Error reading calibration", err)
-		return err
-	}
-	log(fmt.Sprintf("TestM2 - reading 0x%X bytes from pre-calibration file.", n), nil)
-
-	n, err = f.Read(calBlock)
-	if err != nil {
-		log("TestM2 - Error reading calibration", err)
-		return err
-	}
-
-	log(fmt.Sprintf("TestM2 - reading 0x%X bytes from calibration file.", n), nil)
-
-	block := append(preBlock, calBlock...)
-
-	// Doubletime
-	//block = append(block, block[0x100000:0x180000]...)
-
-	log(fmt.Sprintf("Length: 0x%X", len(block)), nil)
-
-	regex := string(0x00) + string(0x04) + "|" +
-		string(0x00) + string(0x00) + string(0x00) + string(0x00) + string(0x06) + "|" +
-		//string(0x00) + string(0x00) + string(0x00) + string(0x02) + "|" +
-		string(0x00) + string(0x01) + string(0x00) + string(0x02) + "|" +
-		string(0x00) + string(0x02) + string(0x00) + string(0x05) + "|" +
-		string(0x00) + string(0x02) + string(0x00) + string(0x02) + "|" +
-		string(0x00) + string(0x02) + "[^" + string(0x00) + "]"
-
-	re := regexp.MustCompile(regex)
-	matches := re.FindAllIndex(block, -1)
-
-	listCount := 0
-	listTableCount := 0
-	tableCount := 0
-	missedCount := 0
-
-	previous := 0x0000
-
-Loop:
-	for _, i := range matches {
-
-		// Continue if we are past the point we are testing for
-		if i[0] < 0x108000 || i[0] > 0x118000 {
-			continue
-		}
-
-		// Set the index of the block file
-		index := i[0]
-
-		// Skip if withing our previous block of data
-		if index < previous {
-			//log(fmt.Sprintf("Index [%X] is within previous item ending at [%X], skipping..\n", index, previous), nil)
-			continue
-		}
-
-		// Print whatever we missed since the last item
-		if previous != 0x0 && index != previous {
-			log(fmt.Sprintf("MISSED!! PREVIOUS END: [%X] NEXT INDEX: [%X] SIZE: %d", previous, index, len(block[previous:index])), nil)
-			log(fmt.Sprintf("********************************** \n %v \n %X \n**********************************\n", block[previous:index], block[previous:index]), nil)
-			missedCount++
-		}
-
-		// Parts we care about right now
-		thirdByte := block[index+2]
-		fourthByte := block[index+3]
-		sixthByte := block[index+5]
-
-		//log(fmt.Sprintf("THIRD: %X FOURTH %X ", thirdByte, fourthByte), nil)
-
-		// Third Byte is not 0x00, so must be a list?
-		if !(thirdByte == 0x00 && fourthByte == 0x02) &&
-			!(thirdByte == 0x00 && fourthByte == 0x05) &&
-			!(thirdByte == 0x00 && fourthByte == 0x00 && sixthByte == 0x06) {
-
-			for b := index + 2; b < len(block); b++ {
-				if (block[b] == 0x00 && block[b+1] == 0x02) ||
-					(block[b] == 0x00 && block[b+1] == 0x04) ||
-					//(block[b] == 0x00 && block[b+1] == 0x00) ||
-					//(block[b] == 0x40 && block[b+1] == 0x00) ||
-					b >= 0x8000 { // && b%2 == 0 {
-
-					size := len(block[index:b])
-					match := fmt.Sprintf("LIST MATCH: %v   ADDRESS: 0x%X  END: 0x%X SIZE: [%d]", block[index:b], index, b, size)
-					log(match, nil)
-					match = fmt.Sprintf("LIST MATCH: %X   ADDRESS: 0x%X  END: 0x%X SIZE: [%d]", block[index:b], index, b, size)
-					log(match, nil)
-
-					if len(block[index:b]) > 6 && len(block[index+4:b]) == int(block[index+2]+1) {
-						log(fmt.Sprintf("LIST MATCH! [%d]", len(block[index+4:b])), nil)
-
-					}
-
-					if size < 11 {
-						previous = b
-						fmt.Println("================================================================================================================")
-						fmt.Println("================================================================================================================")
-						fmt.Println("\n")
-						listCount++
-						continue Loop
-					}
-
-					log(fmt.Sprintf("SIZECHECK SIZE: [%d] LENGTH: [%d]", block[index+2]+1, len(block[index+4:b])), nil)
-
-					length := int(block[index+2] + 1)
-					if block[index+3] == 0x09 || block[index+3] == 0x08 || block[index+3] == 0x01 {
-						firstStart := index + 4
-						firstEnd := firstStart + length
-						fmt.Println("\n")
-						log(fmt.Sprintf("FIRST ITEM:	[%v]", block[firstStart:firstEnd]), nil)
-
-						if firstEnd > b {
-							previous = b
-							listCount++
-							continue Loop
-						}
-
-						extra := block[firstEnd:b]
-						if length+4 < size && len(extra) > 1 {
-							offset := firstEnd + 4
-							for offset < b {
-								extraLength := int(extra[3] + 1)
-								end := offset + extraLength
-								log(fmt.Sprintf("EXTRA: [%v]	DATA: [%v]", block[offset-2:offset], block[offset:end]), nil)
-								offset = offset + extraLength + 5
-							}
-						} else {
-							log(fmt.Sprintf("EXTRA: [%v]", extra), nil)
-						}
-						listCount++
-
-					} else {
-						height := block[index+3] + 1
-						heightCount := 0
-
-						for p := 6; p < size; p = p + length {
-							heightCount++
-							end := index + p + length
-							if end > b {
-								end = b
-							}
-							log(fmt.Sprintf("TABLE: [%v]		WIDTH: [%d]		HEIGHT: [%d]		COUNT: [%d]", block[index+p:end], length, height, heightCount), nil)
-						}
-						listTableCount++
-					}
-
-					previous = b
-					fmt.Println("================================================================================================================")
-					fmt.Println("================================================================================================================")
-					fmt.Println("\n")
-					continue Loop
-				}
-
-			}
-
-		}
-
-		// Third byte is 00 so must be a table?
-		if (thirdByte == 0x00 && fourthByte == 0x02) ||
-			(thirdByte == 0x00 && fourthByte == 0x00) ||
-			(thirdByte == 0x00 && fourthByte == 0x05) {
-
-			m1 := block[index+1]
-			m2 := block[index+3]
-
-			height := int(block[index+4]) + 1
-			width := int(block[index+5]) + 1
-
-			tableCount++
-
-			size := width * height
-			start := index + 8
-			end := start + size
-			previous = end
-
-			match := fmt.Sprintf("TABLE MATCH: %X   ADDRESS: 0x%X  END: 0x%X  SIZE: %d x %d     [%d]    M1: %d      M2: %d      L1: 0x%X	L2: 0x%X	|	START #%X | ROWS: %d x COLS: %d", block[index:index+8], index, end, width, height, size, m1, m2, block[index+6], block[index+7], start, height, width)
-
-			log(match, nil)
-
-			//log(fmt.Sprintf("%X", block[index:end]), nil)
-
-			fmt.Println("\n")
-
-			if m1 == 4 || m1 == 1 {
-				printTable16(width, height, block[start:end])
-			} else {
-				printTable(width, height, block[start:end])
-			}
-
-		}
-
-	}
-
-	log(fmt.Sprintf("LIST COUNT: %d TABLE COUNT: %d LIST TABLE COUNT: %d MISSED COUNT: %d", listCount, tableCount, listTableCount, missedCount), nil)
-
-	return nil
-
-}
-
-// TEST
-func (h *HexStuff) TestM1(calName string) error {
-
-	// Pull in the stuff before the calibration file
-	preCalFile := "./calibrations/" + calibrations["pre"]
-	log(fmt.Sprintf("TestM1 - Pre-calibration File: %s", preCalFile), nil)
-
-	p, err := os.Open(preCalFile)
-	pi, err := p.Stat()
-	preFileSize := pi.Size()
-
-	// Pull in the Calibration file
-	calFile := "./calibrations/" + calibrations[calName]
-	log(fmt.Sprintf("TestM1 - Calibration File: %s", calFile), nil)
-
-	f, err := os.Open(calFile)
-	fi, err := f.Stat()
-	fileSize := fi.Size()
-	if err != nil {
-		log("TestM1 - Error opening file", err)
-		return err
-	}
-
-	log(fmt.Sprintf("TestM1 - [%s] is %d bytes long", calibrations["pre"], preFileSize), nil)
-	log(fmt.Sprintf("TestM1 - [%s] is %d bytes long", calibrations[calName], fileSize), nil)
-
-	// Make some buffers
-	preBlock := make([]byte, 0x108000)
-	calBlock := make([]byte, 0x78000)
-
-	// Read in all the bytes
-	n, err := p.Read(preBlock)
-	if err != nil {
-		log("TestM1 - Error reading calibration", err)
-		return err
-	}
-	log(fmt.Sprintf("TestM1 - reading 0x%X bytes from pre-calibration file.", n), nil)
-
-	n, err = f.Read(calBlock)
-	if err != nil {
-		log("TestM1 - Error reading calibration", err)
-		return err
-	}
-
-	log(fmt.Sprintf("TestM1 - reading 0x%X bytes from calibration file.", n), nil)
-
-	block := append(preBlock, calBlock...)
-
-	// Doubletime
-	//block = append(block, block[0x100000:0x180000]...)
-
-	log(fmt.Sprintf("Length: 0x%X", len(block)), nil)
-
-	//regex := string([]byte{0x00, 0x04, 0x00, 0x02})
-	//regex := string(0x00) + "[" + string(0x01) + "-" + string(0x04) + "]" + string(0x00) + "[" + string(0x02) + "-" + string(0x09) + "]"
-	regex := string(0x00) + "[" + string(0x00) + "-" + string(0x05) + "]" + string(0x00) + "[" + string(0x00) + "-" + string(0x0F) + "]"
-
-	re := regexp.MustCompile(regex)
-	matches := re.FindAllIndex(block, -1)
-
-	count := 0
-
-	sizes := make(map[string]int)
-
-	previous := 0x0000
+func (h *HexStuff) TestM1() ([]int, error) {
 
 	var addresses []int
-
-	for _, i := range matches {
-
-		index := i[0]
-
-		fmt.Println(fmt.Sprintf("MATCH: 0x%X", i[0]))
-
-		height := int(block[index+4]) + 1
-		width := int(block[index+5]) + 1
-
-		if index%2 == 0 && index >= previous && index > 0x108000 && index < 0x118000 && height > 1 {
-
-			//if block[index+6] == 0x08 || block[index+6] == 0x09 || block[index+6] == 0x07 || block[index+6] == 0x06 || block[index+6] == 0x10 {
-
-			h2 := block[index+1] + 1
-			h4 := block[index+3] + 1
-
-			count++
-
-			size := width * height
-			start := index + 8
-			end := start + size
-			previous = end - 1
-
-			sixteen := (int(block[index+7]) << 8) | int(block[index+6])
-
-			match := fmt.Sprintf(" MATCH: -1 0x%X 0 0x%X +1 0x%X  ADDRESS: 0x%X  END: 0x%X  SIZE: %d x %d		[%d]	H2: %d      H4: %d      L: 0x%X	L: %d	|	START #%X | ROWS: %d x COLS: %d", block[index-8:index], block[index:index+8], block[index+8:index+16], index, end, width, height, size, h2, h4, block[index+6:index+8], sixteen, start, height, width)
-			log(match, nil)
-
-			//log(fmt.Sprintf("%X", block[index:end]), nil)
-
-			//fmt.Println("\n")
-
-			//printTable16(width, height, block[start:end])
-			//printTable(width, height, block[start:end])
-
-			sizeName := fmt.Sprintf("%d	x	%d", width, height)
-			var sizeCount int
-			if sizes[sizeName] < 1 {
-				sizeCount = 1
-			} else {
-				sizeCount = sizes[sizeName]
-				sizeCount++
-			}
-			sizes[sizeName] = sizeCount
-
-			addresses = append(addresses, index)
-
-			//}
-		}
-	}
-
-	log(fmt.Sprintf("COUNT: %d ", count), nil)
-
-	fmt.Println("")
-
-	for size, count := range sizes {
-		log(fmt.Sprintf("SIZE: %s		COUNT: %d", size, count), nil)
-	}
-
-	fmt.Println("")
-
-	for _, address := range addresses {
-		fmt.Printf("0x%X, ", address)
-	}
-
-	fmt.Println("")
-	//fmt.Println(matches)
-	fmt.Println("")
-
-	return nil
-
-}
-
-func (h *HexStuff) TestM3(calName string) ([]int, error) {
-
-	// Pull in the stuff before the calibration file
-	preCalFile := "./calibrations/" + calibrations["pre"]
-	log(fmt.Sprintf("TestM1 - Pre-calibration File: %s", preCalFile), nil)
-
-	p, err := os.Open(preCalFile)
-	pi, err := p.Stat()
-	preFileSize := pi.Size()
-
-	// Pull in the Calibration file
-	calFile := "./calibrations/" + calibrations[calName]
-	log(fmt.Sprintf("TestM1 - Calibration File: %s", calFile), nil)
-
-	f, err := os.Open(calFile)
-	fi, err := f.Stat()
-	fileSize := fi.Size()
-	if err != nil {
-		log("TestM1 - Error opening file", err)
-		return nil, err
-	}
-
-	log(fmt.Sprintf("TestM1 - [%s] is %d bytes long", calibrations["pre"], preFileSize), nil)
-	log(fmt.Sprintf("TestM1 - [%s] is %d bytes long", calibrations[calName], fileSize), nil)
-
-	// Make some buffers
-	preBlock := make([]byte, 0x108000)
-	calBlock := make([]byte, 0x78000)
-
-	// Read in all the bytes
-	n, err := p.Read(preBlock)
-	if err != nil {
-		log("TestM1 - Error reading calibration", err)
-		return nil, err
-	}
-	log(fmt.Sprintf("TestM1 - reading 0x%X bytes from pre-calibration file.", n), nil)
-
-	n, err = f.Read(calBlock)
-	if err != nil {
-		log("TestM1 - Error reading calibration", err)
-		return nil, err
-	}
-
-	log(fmt.Sprintf("TestM1 - reading 0x%X bytes from calibration file.", n), nil)
-
-	block := append(preBlock, calBlock...)
-
-	// Doubletime
-	//block = append(block, block[0x100000:0x180000]...)
-
-	log(fmt.Sprintf("Length: 0x%X", len(block)), nil)
-
 	count := 0
-
 	sizes := make(map[string]int)
-
 	previous := 0x0000
-
-	var addresses []int
-
 	index := 0x108000
 
 Loop:
 	for {
 
-		matches := FindMatch(block[index:])
+		matches := FindMatch(h.block[index:])
 		base := index
 
 		for _, i := range matches {
@@ -484,8 +112,8 @@ Loop:
 				continue Loop
 			}
 
-			height := int(block[index+4]) + 1
-			width := int(block[index+5]) + 1
+			height := int(h.block[index+4]) + 1
+			width := int(h.block[index+5]) + 1
 
 			// Hope?
 			if height <= 1 || height > 32 || width > 50 {
@@ -493,12 +121,12 @@ Loop:
 				continue Loop
 			}
 
-			h2 := block[index+1] + 1
-			h4 := block[index+3] + 1
+			h2 := h.block[index+1] + 1
+			h4 := h.block[index+3] + 1
 
-			h7 := block[index+6] + 1
+			h7 := h.block[index+6] + 1
 
-			h8 := block[index+7] + 1
+			h8 := h.block[index+7] + 1
 
 			if index%2 == 0 && index >= previous && index < 0x118000 && height > 1 && h8 <= 11 && h8 > 0 && !(h2 == 2 && h4 == 2) && h7 < 100 {
 
@@ -507,16 +135,16 @@ Loop:
 				size := width * height
 				start := index + 8
 				end := start + size
-				previous = end
 
-				// Round up if odd?
-				if previous%2 != 0 {
-					previous++
+				sixteen := (int(h.block[index+7]) << 8) | int(h.block[index+6])
+
+				fmt.Printf("0x%X\n", previous)
+				if previous != index && previous > 0 {
+					missing := fmt.Sprintf(" MISSED: %X \n", h.block[previous:index])
+					log(missing, nil)
 				}
 
-				sixteen := (int(block[index+7]) << 8) | int(block[index+6])
-
-				match := fmt.Sprintf(" MATCH: -1 0x%X 0 0x%X +1 0x%X  ADDRESS: 0x%X  END: 0x%X  SIZE: %d x %d		[%d]	H2: %d      H4: %d      L: 0x%X	L: %d	|	START #%X | ROWS: %d x COLS: %d", block[index-8:index], block[index:index+8], block[index+8:index+16], index, end, width, height, size, h2, h4, block[index+6:index+8], sixteen, start, height, width)
+				match := fmt.Sprintf(" MATCH: -1 0x%X 0 0x%X +1 0x%X  ADDRESS: 0x%X  END: 0x%X  SIZE: %d x %d		[%d]	H2: %d      H4: %d      L: 0x%X	L: %d	|	START #%X | ROWS: %d x COLS: %d", h.block[index-8:index], h.block[index:index+8], h.block[end:end+8], index, end, width, height, size, h2, h4, h.block[index+6:index+8], sixteen, start, height, width)
 				log(match, nil)
 
 				sizeName := fmt.Sprintf("%d	x	%d", width, height)
@@ -530,6 +158,13 @@ Loop:
 				sizes[sizeName] = sizeCount
 
 				addresses = append(addresses, index)
+
+				previous = end
+
+				// Round up if odd?
+				if previous%2 != 0 {
+					previous++
+				}
 
 				index = previous
 
@@ -558,6 +193,253 @@ Loop:
 
 	fmt.Println("")
 	//fmt.Println(matches)
+	fmt.Println("")
+
+	return addresses, nil
+
+}
+
+func (h *HexStuff) TestM2() ([]int, error) {
+
+	var addresses []int
+	count := 0
+	//sizes := make(map[string]int)
+
+	// startIP := 0x10A500
+	startIP := 0x108B00
+
+	previousEnd := startIP
+
+Loop:
+	for index := startIP; index < len(h.block); index++ {
+
+		if count >= 111 {
+			break Loop
+		}
+
+		if index >= 0x110000 {
+			break Loop
+		}
+
+		dataType := ""
+		cols := 0
+		rows := 0
+		size := 0
+		padCount := 0
+
+		end := index
+
+		h1 := h.block[index]
+		h2 := h.block[index+1]
+		h3 := h.block[index+2]
+		h4 := h.block[index+3]
+		h5 := h.block[index+4]
+		//h6 := h.block[index+5]
+		h7 := h.block[index+6]
+		//h8 := h.block[index+7]
+
+		// Skip the weird stuff that the code touches.
+		if h1 == 0x00 && h2 == 0x02 && h3 == 0x01 && h4 == 0x01 && h5 == 0x00 {
+			fmt.Printf("Skipping [0x%X] - [0x%X]...\n", index, index+279)
+			index += 278
+			previousEnd = index + 1
+		}
+
+		if h1 == 0x33 && h2 == 0x4F && h3 == 0x01 {
+			fmt.Printf("Skipping [0x%X] - [0x%X]...\n", index, index+3)
+			index += 3
+			previousEnd = index + 1
+		}
+
+		if h1 == 0xA0 && h2 == 0xC0 {
+			fmt.Printf("Skipping [0x%X] - [0x%X]...\n", index, index+5)
+			index += 5
+			previousEnd = index + 1
+		}
+
+		if h1 == 0x01 && h2 == 0x10 {
+			fmt.Printf("Skipping [0x%X] - [0x%X]...\n", index, index+61)
+			index += 61
+			previousEnd = index + 1
+		}
+
+		if h1 == 0x33 && h2 == 0x03 && h3 == 0x70 {
+			fmt.Printf("Skipping [0x%X] - [0x%X]...\n", index, index+216)
+			index += 216
+			previousEnd = index + 1
+		}
+
+		// skip 0xFF's
+		if h1 == 0xFF && h2 == 0xFF {
+			index++
+			previousEnd = index + 1
+			continue Loop
+		}
+
+		//fmt.Printf("Index: 0x%X	-	TESTING: H1: 0x%X	H2: 0x%X	H3: 0x%X	H4: 0x%X	H5: 0x%X	H7: 0x%X	H8: 0x%X\n\n", index, h1, h2, h3, h4, h5, h7, h8)
+
+		// 4 Byte Match
+		if h1 == 0x02 {
+			//fmt.Printf("If #3 Index: 0x%X...\n", index)
+
+			size = 4
+			end = index + size + 1
+
+			count++
+
+			if previousEnd > 1 && previousEnd < index { // byte match
+				fmt.Printf("###############################################################\n PREVIOUS END: 0x%X [%d bytes]\n MISSED: %X \n###############################################################\n\n\n\n", previousEnd, len(h.block[previousEnd:index]), h.block[previousEnd:index])
+			}
+
+			match := fmt.Sprintf(" 4 BYTES MATCH # %d	-	ADDRESS: 0x%X	END: 0x%X	[%d bytes]\n 0x %X\n", count, index, end, size, h.block[index:end])
+			log(match, nil)
+
+			addresses = append(addresses, index)
+
+			previousEnd = end + padCount
+
+			index = previousEnd - 1
+
+			continue Loop
+		}
+
+		//fmt.Printf("HERE Index: 0x%X...\n", index)
+
+		// Word Aligned Stuff
+		if index%2 == 0 && (h1 == 0x00 || h1 == 0x40 || h1 == 0x60 || h1 == 0x80) && h2&0xF8 == 0x00 {
+			//fmt.Printf("If #1 Index: 0x%X...\n", index)
+
+			// 40 00 60 00 0C
+			// A0 00 00 08 06 09 04 09 00
+			// 00 02 00 02 16 0D 08 09 FE FE
+			if ((h3 == 0x00 && h4&0xF8 == 0x00) || (h3&0x1F == 0x00 && h4 == 0x00)) && h5 > 0x00 { // 3D Maps!
+				//fmt.Printf("If #2 Index: 0x%X...\n", index)
+				dataType = "3D Map"
+
+				cols = int(h.block[index+4]) + 1
+				rows = int(h.block[index+5]) + 1
+
+				size = cols * rows
+
+				// two byte mode?
+				if h2 == 0x01 {
+					size *= 2
+				}
+
+				end = index + size + 8
+
+				if (h2 == 0x02 || h2 == 0x04) && h7&0x01 == 0x01 {
+					// Account for escaped 0x00
+					for di := index + 8; di < end+padCount; di += 2 {
+						if h.block[di] == 0x00 {
+							padCount += 1
+						}
+					}
+				}
+
+				count++
+
+				if previousEnd > 1 && previousEnd < index {
+					fmt.Printf("###############################################################\n PREVIOUS END: 0x%X [%d bytes]\n MISSED: %X \n###############################################################\n\n\n\n", previousEnd, len(h.block[previousEnd:index]), h.block[previousEnd:index])
+				}
+
+				match := fmt.Sprintf(" 3D MATCH # %d	-	ADDRESS: 0x%X	END: 0x%X	%d x %d	[%d bytes]	[padded: %d]	Type: %s\n 0x %X \n", count, index, end, cols, rows, size, padCount, dataType, h.block[index:end+padCount])
+				log(match, nil)
+
+				addresses = append(addresses, index)
+
+				previousEnd = end + padCount
+
+				// Round up if not word aligned
+				if previousEnd%2 != 0 {
+					previousEnd++
+				}
+
+				index = previousEnd - 1
+
+				continue Loop
+
+				// 00 02 0D 09 60 50
+			} else if h3&0xF0 == 0x00 && h3 > 0x00 { // Arrays!
+				//00 00 00 02 00
+				//fmt.Printf("If #3 Index: 0x%X...\n", index)
+				dataType = "Array"
+
+				size = int(h3) + 1
+
+				// two byte mode?
+				if h1 == 0x40 && h4&0x04 == 0x04 {
+					fmt.Printf("If #4 Index: 0x%X...\n", index)
+					size *= 2
+				}
+
+				end = index + size + 4
+
+				// Account for escaped 0x0*
+				if h2 == 0x04 && h4 == 0x05 {
+					for di := index + 4; di < end+padCount-1; di++ {
+						if di%2 == 0x00 && h.block[di]&0x0F == 0x00 {
+							padCount += 1
+						}
+					}
+				}
+
+				// alternate pad 1
+				if h1 == 0x00 && (h2 == 0x00 && h3 == 0x07 && h4 == 0x05) {
+					for di := index + 4; di < end+padCount; di += 1 {
+						if h.block[di] < 0x05 && padCount < size {
+							padCount += 1
+						}
+					}
+				}
+
+				// alternate pad 2
+				// 00 02 0D 09
+				if h1 == 0x00 && (h2 == 0x02 && h3 == 0x0D && h4 == 0x09) {
+					for di := index + 4; di < end+padCount; di++ {
+						if h.block[di] < h2 && h.block[di] > 0x00 {
+							padCount += 1
+							di++
+						}
+					}
+				}
+
+				count++
+
+				if previousEnd < index {
+					fmt.Printf("###############################################################\n PREVIOUS END: 0x%X [%d bytes]\n MISSED: %X \n###############################################################\n\n\n\n", previousEnd, len(h.block[previousEnd:index]), h.block[previousEnd:index])
+				}
+
+				match := fmt.Sprintf(" ARRAY MATCH # %d	-	ADDRESS: 0x%X	END: 0x%X	[%d bytes]	[padded: %d]	Type: %s\n 0x %X\n", count, index, end+padCount, size, padCount, dataType, h.block[index:end+padCount])
+				log(match, nil)
+
+				addresses = append(addresses, index)
+
+				previousEnd = end + padCount
+
+				// Round up if not word aligned
+				if previousEnd%2 != 0 {
+					previousEnd++
+				}
+
+				index = previousEnd - 1
+
+				continue Loop
+
+			} else {
+				index++
+
+				continue Loop
+			}
+
+		}
+
+	}
+
+	for _, address := range addresses {
+		fmt.Printf("0x%X, ", address)
+	}
+
 	fmt.Println("")
 
 	return addresses, nil
